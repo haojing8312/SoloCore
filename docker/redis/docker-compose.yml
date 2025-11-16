@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: solocore-redis
+    restart: unless-stopped
+
+    # 启动命令 - 使用配置文件并设置密码
+    command: redis-server /usr/local/etc/redis/redis.conf --requirepass solocore_redis_pass_2024
+
+    # 端口映射 - 暴露到公网（测试环境）
+    ports:
+      - "0.0.0.0:6379:6379"
+
+    # 配置文件和数据持久化
+    volumes:
+      - redis_data:/data
+      - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
+
+    # 环境变量
+    environment:
+      TZ: Asia/Shanghai
+
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+    # 网络配置
+    networks:
+      - solocore-network
+
+# 数据卷
+volumes:
+  redis_data:
+    driver: local
+
+# 网络
+networks:
+  solocore-network:
+    driver: bridge

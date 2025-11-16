@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: solocore-postgres
+    restart: unless-stopped
+
+    # 环境变量配置
+    environment:
+      POSTGRES_DB: solocore
+      POSTGRES_USER: solocore_user
+      POSTGRES_PASSWORD: solocore_pass_2024
+      # 允许远程连接
+      POSTGRES_HOST_AUTH_METHOD: md5
+      # 时区设置
+      TZ: Asia/Shanghai
+
+    # 端口映射 - 暴露到公网（测试环境）
+    ports:
+      - "0.0.0.0:5432:5432"
+
+    # 数据持久化
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # PostgreSQL 配置文件（可选）
+      - ./postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      # 允许远程访问配置
+      - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
+
+    # 健康检查
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U solocore_user -d solocore"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+    # 资源限制（可根据实际情况调整）
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+    # 网络配置
+    networks:
+      - solocore-network
+
+# 数据卷
+volumes:
+  postgres_data:
+    driver: local
+
+# 网络
+networks:
+  solocore-network:
+    driver: bridge
