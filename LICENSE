@@ -1,0 +1,102 @@
+# SoloCore Licensing Policy (Dual License: Community & Commercial)
+# SoloCore 许可协议（双重许可：社区版 & 商业版）
+
+SoloCore is released under a dual-license model: the SoloCore Community License (free) and a Commercial License (paid).
+
+SoloCore 采用双重许可模式发布：**SoloCore 社区许可证（免费）** 和 **商业许可证（付费）**。
+
+---
+
+## 1. SoloCore Community License | SoloCore 社区许可证（免费）
+
+### Permitted Uses (Free) | 允许的使用：
+
+**Individuals (Personal Use) | 个人用户（个人使用）：**
+
+- Granted a free, perpetual license to use all standard SoloCore functions.
+  免费、永久地使用 SoloCore 的所有标准功能。
+
+- Content created using SoloCore may be used for personal or commercial projects.
+  使用 SoloCore 生成的内容可用于个人或商业项目。
+
+**Organizations (Limited Use) | 组织用户（有限使用）：**
+
+- Organizations may use SoloCore only in its standard, unmodified, out-of-the-box form for evaluation or non-commercial purposes.
+  组织仅可在 **未经修改、原样的标准版本** 下使用 SoloCore，用于评估或非商业目的。
+
+### Strictly Prohibited Without a Commercial License | 在未获得商业许可证的情况下，严格禁止以下行为：
+
+- **Team Deployment | 团队部署:** Installing, hosting, or operating SoloCore for simultaneous use by multiple users in an organization (e.g., on shared servers, internal networks, or private clouds).
+  在组织内部以多人同时访问的方式安装、托管或运行 SoloCore（例如：共享服务器、内部网络或私有云环境）。
+
+- **Code Modification or Derivative Works | 代码修改或衍生作品:** Modifying, translating, reverse-engineering, or creating derivative products based on SoloCore source code.
+  修改、翻译、逆向工程、反编译或基于 SoloCore 源代码创建衍生产品。
+
+- **Redistribution | 再分发:** Redistributing SoloCore (modified or unmodified) as part of another product or service.
+  将 SoloCore（无论是否修改）作为其他产品或服务的一部分进行再分发。
+
+- **Competitive Offering | 竞争性产品:** Using SoloCore (in whole or in part) as the foundation of a competing commercial product.
+  将 SoloCore（整体或部分）作为竞争性商业产品或服务的基础。
+
+---
+
+## 2. Commercial License | 商业许可证（付费）
+
+A Commercial License is **REQUIRED** for any of the following:
+以下任何情况 **必须购买商业许可证**：
+
+- Internal multi-user or team deployment.
+  内部多用户或团队部署。
+
+- Any secondary development, customization, or modification of the source code.
+  对 SoloCore 源代码的任何二次开发、定制或修改。
+
+- Embedding or redistributing SoloCore as part of your own commercial offering.
+  将 SoloCore 嵌入或再分发为您自己的商业产品或服务的一部分。
+
+- Access to official technical support, warranties, or indemnification.
+  获取官方的技术支持、质量保证或赔偿保障。
+
+A Commercial License grants you the legal right to use SoloCore for enterprise purposes and to adapt its source code for your organization's needs.
+
+商业许可证为您提供在企业环境中合法使用 SoloCore 的权利，并允许根据组织需求修改其源代码。
+
+**To obtain a Commercial License, please contact | 👉 获取商业许可证，请联系：**
+364430879@qq.com
+
+---
+
+## 3. Contributions | 贡献者条款
+
+By submitting contributions, you agree to grant the SoloCore maintainers a perpetual, worldwide, royalty-free, irrevocable license to use, modify, and sublicense your contributions under both the Community and Commercial Licenses.
+
+通过提交代码或其他贡献，您同意授予 SoloCore 项目维护者一项 **永久的、全球性的、免费的、免版税的、不可撤销的许可**，允许其在 **社区许可证和商业许可证** 下使用、修改和再许可您的贡献。
+
+---
+
+## 4. Trademarks & UI | 商标与界面保护
+
+The SoloCore name, logo, and visual/interaction design are protected intellectual property and trademarks.
+
+**SoloCore 名称、Logo 及其视觉/交互设计** 受知识产权和商标法保护。
+
+You may not use SoloCore branding, trademarks, or UI/UX designs for derivative or resale products without explicit permission.
+
+未经明确授权，不得将 SoloCore 的品牌、商标或 UI/UX 设计用于衍生或再销售的产品。
+
+---
+
+## 5. Disclaimer of Warranty | 免责声明
+
+SoloCore is provided "AS IS" without warranty of any kind, either express or implied, including, but not limited to, the implied warranties of merchantability, fitness for a particular purpose, or non-infringement.
+
+SoloCore 以"现状"提供，不提供任何明示或暗示的保证，包括但不限于适销性、特定用途适用性或不侵权的保证。
+
+In no event shall the authors or copyright holders be liable for any claim, damages, or other liability arising from the use of SoloCore.
+
+在任何情况下，作者或版权持有者均不对因使用 SoloCore 而产生的任何索赔、损害或其他责任负责。
+
+---
+
+© 2025 SoloCore Contributors. All rights reserved.
+© 2025 SoloCore 贡献者. 版权所有。
