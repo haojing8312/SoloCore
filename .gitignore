@@ -54,6 +54,11 @@ workspace/logs/
 
 # Docker
 docker-compose.override.yml
+# Docker 数据持久化目录
+docker/postgres/data/*
+!docker/postgres/data/.gitkeep
+docker/redis/data/*
+!docker/redis/data/.gitkeep
 
 # Workspace
 workspace/

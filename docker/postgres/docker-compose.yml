@@ -10,19 +10,23 @@ services:
     environment:
       POSTGRES_DB: solocore
       POSTGRES_USER: solocore_user
+      # ⚠️ 生产环境必须修改：请使用强密码替换默认密码
       POSTGRES_PASSWORD: solocore_pass_2024
       # 允许远程连接
       POSTGRES_HOST_AUTH_METHOD: md5
       # 时区设置
       TZ: Asia/Shanghai
 
-    # 端口映射 - 暴露到公网（测试环境）
+    # 端口映射
+    # ⚠️ 生产环境必须修改：建议改为 "127.0.0.1:5432:5432" 仅本地访问
+    # 当前配置 0.0.0.0 会暴露到公网，仅适用于测试环境
     ports:
       - "0.0.0.0:5432:5432"
 
     # 数据持久化
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # 数据持久化到当前目录
+      - ./data:/var/lib/postgresql/data
       # PostgreSQL 配置文件（可选）
       - ./postgresql.conf:/etc/postgresql/postgresql.conf:ro
       # 允许远程访问配置
@@ -49,11 +53,6 @@ services:
     # 网络配置
     networks:
       - solocore-network
-
-# 数据卷
-volumes:
-  postgres_data:
-    driver: local
 
 # 网络
 networks:

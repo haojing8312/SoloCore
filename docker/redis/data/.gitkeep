@@ -1,0 +1,3 @@
+# Redis 数据目录
+# 此目录用于存储 Redis 持久化文件 (RDB/AOF)
+# 数据文件会被 .gitignore 排除，不会提交到 Git

@@ -7,15 +7,19 @@ services:
     restart: unless-stopped
 
     # 启动命令 - 使用配置文件并设置密码
+    # ⚠️ 生产环境必须修改：请使用强密码替换默认密码
     command: redis-server /usr/local/etc/redis/redis.conf --requirepass solocore_redis_pass_2024
 
-    # 端口映射 - 暴露到公网（测试环境）
+    # 端口映射
+    # ⚠️ 生产环境必须修改：建议改为 "127.0.0.1:6379:6379" 仅本地访问
+    # 当前配置 0.0.0.0 会暴露到公网，仅适用于测试环境
     ports:
       - "0.0.0.0:6379:6379"
 
     # 配置文件和数据持久化
     volumes:
-      - redis_data:/data
+      # 数据持久化到当前目录
+      - ./data:/data
       - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
 
     # 环境变量
@@ -43,11 +47,6 @@ services:
     # 网络配置
     networks:
       - solocore-network
-
-# 数据卷
-volumes:
-  redis_data:
-    driver: local
 
 # 网络
 networks:
