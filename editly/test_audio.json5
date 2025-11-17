@@ -1,0 +1,37 @@
+{
+  outPath: "./output/test_audio.mp4",
+  width: 1080,
+  height: 1920,
+  fps: 30,
+  audioFilePath: "./test_assets/test_audio.mp3",
+  clips: [
+    {
+      duration: 3,
+      layers: [
+        {
+          type: "fill-color",
+          color: "#ff0066"
+        },
+        {
+          type: "title",
+          text: "音频测试",
+          textColor: "#ffffff"
+        }
+      ]
+    },
+    {
+      duration: 3,
+      layers: [
+        {
+          type: "fill-color",
+          color: "#00cc66"
+        },
+        {
+          type: "title",
+          text: "背景音乐混合",
+          textColor: "#ffffff"
+        }
+      ]
+    }
+  ]
+}

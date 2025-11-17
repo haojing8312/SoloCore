@@ -1,0 +1,61 @@
+{
+  outPath: "./output/test_image_slideshow.mp4",
+  width: 1080,
+  height: 1920,
+  fps: 30,
+  defaults: {
+    transition: {
+      name: "fade",
+      duration: 0.5
+    }
+  },
+  clips: [
+    {
+      duration: 3,
+      layers: [
+        {
+          type: "image",
+          path: "./test_assets/image1.jpg"
+        },
+        {
+          type: "title",
+          text: "第一张图片",
+          textColor: "#ffffff",
+          position: { x: 0.1, y: 0.1, originX: "left", originY: "top" }
+        }
+      ]
+    },
+    {
+      duration: 3,
+      transition: { name: "crosswarp", duration: 0.8 },
+      layers: [
+        {
+          type: "image",
+          path: "./test_assets/image2.jpg"
+        },
+        {
+          type: "title",
+          text: "第二张图片",
+          textColor: "#ffffff",
+          position: { x: 0.1, y: 0.1, originX: "left", originY: "top" }
+        }
+      ]
+    },
+    {
+      duration: 3,
+      transition: { name: "directionalwipe", duration: 0.6 },
+      layers: [
+        {
+          type: "image",
+          path: "./test_assets/image3.jpg"
+        },
+        {
+          type: "title",
+          text: "第三张图片",
+          textColor: "#ffffff",
+          position: { x: 0.1, y: 0.1, originX: "left", originY: "top" }
+        }
+      ]
+    }
+  ]
+}

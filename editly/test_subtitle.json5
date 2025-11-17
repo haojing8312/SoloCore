@@ -1,0 +1,53 @@
+{
+  outPath: "./output/test_subtitle.mp4",
+  width: 1080,
+  height: 1920,
+  fps: 30,
+  clips: [
+    {
+      duration: 5,
+      layers: [
+        {
+          type: "fill-color",
+          color: "#1a1a1a"
+        },
+        {
+          type: "subtitle",
+          text: "第一段字幕\\n展示多行文本功能",
+          textColor: "#ffffff",
+          backgroundColor: "rgba(0, 0, 0, 0.7)"
+        }
+      ]
+    },
+    {
+      duration: 5,
+      layers: [
+        {
+          type: "fill-color",
+          color: "#2a2a3a"
+        },
+        {
+          type: "subtitle",
+          text: "第二段字幕\\n支持自动换行和背景色",
+          textColor: "#00ff00",
+          backgroundColor: "rgba(255, 0, 0, 0.5)"
+        }
+      ]
+    },
+    {
+      duration: 5,
+      layers: [
+        {
+          type: "image",
+          path: "./test_assets/image1.jpg"
+        },
+        {
+          type: "subtitle",
+          text: "图片上的字幕\\n带半透明黑色背景",
+          textColor: "#ffff00",
+          backgroundColor: "rgba(0, 0, 0, 0.8)"
+        }
+      ]
+    }
+  ]
+}

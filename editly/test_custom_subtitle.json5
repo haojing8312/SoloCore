@@ -1,0 +1,21 @@
+{
+  outPath: "./output/test_custom_subtitle.mp4",
+  width: 1080,
+  height: 1920,
+  fps: 30,
+  clips: [
+    {
+      duration: 5,
+      layers: [
+        {
+          type: "fill-color",
+          color: "#000000"
+        },
+        {
+          type: "fabric",
+          func: "({ fabric, canvas, width, height }) => { const title = new fabric.Text('自定义字幕测试', { left: width / 2, top: 200, fontSize: 80, fill: '#ffffff', fontWeight: 'bold', textAlign: 'center', originX: 'center', originY: 'center' }); canvas.add(title); const subtitle = new fabric.Text('使用 Fabric.js 实现精确控制', { left: width / 2, top: 320, fontSize: 40, fill: '#00ff00', stroke: '#000000', strokeWidth: 2, textAlign: 'center', originX: 'center', originY: 'center' }); canvas.add(subtitle); const bottomText = new fabric.Text('这是底部字幕\\n支持多行显示\\n位置精确可控', { left: width / 2, top: height - 300, fontSize: 50, fill: '#ffffff', stroke: '#ff0000', strokeWidth: 3, textAlign: 'center', originX: 'center', originY: 'center', shadow: { color: 'rgba(0,0,0,0.8)', blur: 10, offsetX: 5, offsetY: 5 } }); canvas.add(bottomText); const corner = new fabric.Text('TextLoom', { left: 50, top: 50, fontSize: 35, fill: '#ff6600', fontFamily: 'Arial', fontStyle: 'italic' }); canvas.add(corner); }"
+        }
+      ]
+    }
+  ]
+}

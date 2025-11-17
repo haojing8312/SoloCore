@@ -1,0 +1,111 @@
+{
+  outPath: "./output/test_comprehensive.mp4",
+  width: 1080,
+  height: 1920,
+  fps: 30,
+  audioFilePath: "./test_assets/test_audio.mp3",
+  defaults: {
+    transition: {
+      name: "fade",
+      duration: 0.5
+    }
+  },
+  clips: [
+    // 开场：纯色背景 + 标题
+    {
+      duration: 3,
+      layers: [
+        {
+          type: "fill-color",
+          color: "#0066cc"
+        },
+        {
+          type: "title",
+          text: "Editly 综合测试",
+          textColor: "#ffffff"
+        },
+        {
+          type: "subtitle",
+          text: "测试所有核心功能",
+          textColor: "#ffff00"
+        }
+      ]
+    },
+
+    // 场景1：图片 + 字幕 + 转场
+    {
+      duration: 4,
+      transition: { name: "crosswarp", duration: 0.8 },
+      layers: [
+        {
+          type: "image",
+          path: "./test_assets/image1.jpg"
+        },
+        {
+          type: "subtitle",
+          text: "场景1: 图片幻灯片\\n支持多种转场效果",
+          textColor: "#ffffff",
+          backgroundColor: "rgba(0, 0, 0, 0.7)"
+        }
+      ]
+    },
+
+    // 场景2：另一张图片 + 不同转场
+    {
+      duration: 4,
+      transition: { name: "directionalwipe", duration: 0.6 },
+      layers: [
+        {
+          type: "image",
+          path: "./test_assets/image2.jpg"
+        },
+        {
+          type: "subtitle",
+          text: "场景2: 自定义字幕\\n位置、颜色、背景可控",
+          textColor: "#00ff00",
+          backgroundColor: "rgba(255, 0, 0, 0.5)"
+        }
+      ]
+    },
+
+    // 场景3：第三张图片
+    {
+      duration: 4,
+      transition: { name: "circleopen", duration: 0.7 },
+      layers: [
+        {
+          type: "image",
+          path: "./test_assets/image3.jpg"
+        },
+        {
+          type: "subtitle",
+          text: "场景3: 音频混合\\n支持背景音乐和音效",
+          textColor: "#ff00ff",
+          backgroundColor: "rgba(0, 0, 0, 0.8)"
+        }
+      ]
+    },
+
+    // 结束：纯色 + 标题
+    {
+      duration: 3,
+      transition: { name: "fade", duration: 1.0 },
+      layers: [
+        {
+          type: "fill-color",
+          color: "#ff6600"
+        },
+        {
+          type: "title",
+          text: "测试完成！",
+          textColor: "#ffffff"
+        },
+        {
+          type: "subtitle",
+          text: "所有功能正常运行",
+          textColor: "#ffffff"
+        }
+      ]
+    }
+  ]
+}
