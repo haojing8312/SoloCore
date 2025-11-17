@@ -16,6 +16,8 @@ services:
       POSTGRES_HOST_AUTH_METHOD: md5
       # 时区设置
       TZ: Asia/Shanghai
+      # PostgreSQL 数据目录（解决挂载点初始化问题）
+      PGDATA: /var/lib/postgresql/data/pgdata
 
     # 端口映射
     # ⚠️ 生产环境必须修改：建议改为 "127.0.0.1:5432:5432" 仅本地访问
