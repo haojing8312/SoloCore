@@ -1,0 +1,13 @@
+services:
+  editly:
+    container_name: editly
+    image: editly/editly:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - "outputs:/outputs"
+      - ./examples/assets/:/app/examples/assets/
+
+volumes:
+  outputs:

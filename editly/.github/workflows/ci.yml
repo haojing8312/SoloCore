@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 0 * * *" # Once/day to test new node versions
+
+jobs:
+  # Generate build matrix from endoflife.date
+  # Coped from https://github.com/bkeepers/dotenv/pull/521
+  versions:
+    name: Get latest versions
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        product: ["nodejs"]
+    outputs:
+      nodejs: ${{ steps.supported.outputs.nodejs }}
+    steps:
+      - id: supported
+        run: |
+          product="${{ matrix.product }}"
+          data=$(curl https://endoflife.date/api/$product.json)
+          supported=$(echo $data | jq '[.[] | select(.lts != false and .eol > (now | strftime("%Y-%m-%d")))]')
+          echo "${product}=$(echo $supported | jq -c 'map(.latest)')" >> $GITHUB_OUTPUT
+  test:
+    needs: versions
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        nodejs: ${{ fromJSON(needs.versions.outputs.nodejs) }}
+    runs-on: ${{ matrix.os }}
+    env:
+      DISPLAY: :0
+    steps:
+      - if: runner.os == 'macOS'
+        run: |
+          brew install \
+            cairo \
+            ffmpeg \
+            giflib \
+            jpeg \
+            libpng \
+            librsvg \
+            pango \
+            pixman \
+            pkg-config \
+            python-setuptools
+      - if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update && sudo apt-get install -y \
+            build-essential \
+            ffmpeg \
+            libcairo2-dev \
+            libgif-dev \
+            libglew-dev \
+            libglu1-mesa-dev \
+            libjpeg-dev \
+            libpango1.0-dev \
+            librsvg2-dev \
+            libxi-dev \
+            pkg-config
+      - if: runner.os == 'Linux'
+        run: sudo /usr/bin/Xvfb $DISPLAY -screen 0 1280x1024x24 &
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.nodejs }}
+          cache: "npm"
+          cache-dependency-path: ./package.json
+      - run: npm install
+      - run: npm run build
+      - run: npm run lint
+      - run: npm run test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: video-${{ runner.os }}-${{ matrix.nodejs }}
+          path: editly-out.mp4
+          compression-level: 0
+          if-no-files-found: error
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: mifi/editly-assets
+          path: examples/assets
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.nodejs }}
+          cache: "npm"
+          cache-dependency-path: ./package.json
+      - run: docker compose build
+      - run: docker compose up -d
+      - run: docker compose run editly bash -c "cd examples && ./run audio1.json5"

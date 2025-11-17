@@ -1,0 +1,14 @@
+/.github
+/eslint.config.mjs
+/tsconfig*
+/test/
+/Dockerfile
+/docker-compose.yml
+.dockerignore
+/examples
+/.cache
+/yarn-error.log
+editly-tmp-*/
+*.{mp4,png,webm,gif}
+examples/assets
+mytodo.md
