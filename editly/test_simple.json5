@@ -1,0 +1,36 @@
+{
+  outPath: "./output/test_simple.mp4",
+  width: 1080,
+  height: 1920,
+  fps: 30,
+  clips: [
+    {
+      duration: 3,
+      layers: [
+        {
+          type: "fill-color",
+          color: "#0066cc"
+        },
+        {
+          type: "title",
+          text: "Editly 测试成功！",
+          textColor: "#ffffff"
+        }
+      ]
+    },
+    {
+      duration: 3,
+      layers: [
+        {
+          type: "fill-color",
+          color: "#ff6600"
+        },
+        {
+          type: "title",
+          text: "Windows 部署完成",
+          textColor: "#ffffff"
+        }
+      ]
+    }
+  ]
+}
