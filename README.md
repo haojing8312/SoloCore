@@ -125,6 +125,21 @@
 - **前端:** Vue 3 + TypeScript + Element Plus + Vite → [easegen-front](https://github.com/taoofagi/easegen-front)
 - **后端:** Java/Spring Boot (基于 Ruoyi-Vue-Pro) → [easegen-admin](https://github.com/taoofagi/easegen-admin)
 
+**📦 本地访问：**
+
+这两个项目已经作为 Git Submodule 添加到 SoloCore 根目录，你可以直接访问：
+```bash
+# 克隆 SoloCore 时包含子模块
+git clone --recursive https://github.com/haojing8312/SoloCore.git
+
+# 或者在已克隆的仓库中初始化子模块
+git submodule update --init --recursive
+
+# 子模块位置
+./easegen-front/   # 前端项目
+./easegen-admin/   # 后端项目
+```
+
 如果你对 AI 教育工具或数字人技术感兴趣，欢迎 Star ⭐ 和贡献代码！
 
 ---

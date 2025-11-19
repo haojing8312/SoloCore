@@ -1,0 +1,6 @@
+[submodule "easegen-admin"]
+	path = easegen-admin
+	url = https://github.com/taoofagi/easegen-admin.git
+[submodule "easegen-front"]
+	path = easegen-front
+	url = https://github.com/taoofagi/easegen-front.git
