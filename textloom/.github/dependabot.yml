@@ -1,0 +1,179 @@
+# Dependabot 自动化依赖更新配置
+# 为 TextLoom 项目提供安全的、渐进的依赖更新
+
+version: 2
+
+updates:
+  # Python 依赖包管理
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "06:00"
+      timezone: "Asia/Shanghai"
+    
+    # 版本更新策略
+    versioning-strategy: increase
+    
+    # PR 配置
+    open-pull-requests-limit: 5
+    
+    # 分组配置 - 将相关更新合并到一个PR
+    groups:
+      # 安全相关包 - 高优先级
+      security-updates:
+        patterns:
+          - "cryptography*"
+          - "pyjwt*"
+          - "passlib*"
+          - "python-jose*"
+          - "bcrypt*"
+          - "pillow*"
+          - "urllib3*"
+          - "requests*"
+          - "httpx*"
+        update-types:
+          - "security"
+          - "patch"
+          - "minor"
+      
+      # 核心框架 - 谨慎更新
+      core-framework:
+        patterns:
+          - "fastapi*"
+          - "uvicorn*"
+          - "sqlalchemy*"
+          - "pydantic*"
+          - "celery*"
+          - "redis*"
+        update-types:
+          - "patch"
+          - "minor"
+      
+      # AI 和云服务 - 允许更新
+      ai-services:
+        patterns:
+          - "openai*"
+          - "google-*"
+          - "boto3*"
+          - "botocore*"
+        update-types:
+          - "patch"
+          - "minor"
+          - "major"
+      
+      # 开发工具 - 积极更新
+      dev-tools:
+        patterns:
+          - "pytest*"
+          - "black*"
+          - "isort*"
+          - "mypy*"
+          - "flake8*"
+          - "safety*"
+          - "pip-audit*"
+          - "bandit*"
+        update-types:
+          - "patch"
+          - "minor"
+          - "major"
+      
+      # 数据库和存储
+      database-storage:
+        patterns:
+          - "asyncpg*"
+          - "psycopg*"
+          - "alembic*"
+          - "minio*"
+          - "supabase*"
+        update-types:
+          - "patch"
+          - "minor"
+    
+    # 忽略特定包或版本
+    ignore:
+      # 固定关键包的主版本，避免破坏性更新
+      - dependency-name: "fastapi"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "sqlalchemy"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "pydantic"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "celery"
+        update-types: ["version-update:semver-major"]
+      
+      # 已知有兼容性问题的版本
+      - dependency-name: "pillow"
+        versions: ["<10.0.0"]
+    
+    # 自动合并策略 - 仅对补丁版本启用
+    allow:
+      - dependency-type: "direct"
+        update-type: "security"
+      - dependency-type: "direct"
+        update-type: "patch"
+      - dependency-type: "indirect"
+        update-type: "security"
+        
+    # 提交消息自定义
+    commit-message:
+      prefix: "deps"
+      prefix-development: "deps-dev"
+      include: "scope"
+    
+    # PR 标签
+    labels:
+      - "dependencies"
+      - "automated"
+    
+    # 里程碑（如果使用）
+    # milestone: 1
+    
+    # 分配给特定人员（如果需要）
+    assignees:
+      - "textloom-security-team"  # 替换为实际的团队成员
+    
+    # 审核人员
+    reviewers:
+      - "textloom-maintainers"   # 替换为实际的维护团队
+
+  # GitHub Actions 工作流依赖
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+      day: "first-monday"
+      time: "06:00"
+      timezone: "Asia/Shanghai"
+    
+    open-pull-requests-limit: 3
+    
+    labels:
+      - "github-actions"
+      - "dependencies"
+      - "automated"
+    
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+
+  # Docker 依赖 (如果使用 Dockerfile)
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "wednesday"
+      time: "06:00"
+      timezone: "Asia/Shanghai"
+    
+    open-pull-requests-limit: 2
+    
+    labels:
+      - "docker"
+      - "dependencies"
+      - "automated"
+    
+    commit-message:
+      prefix: "docker"
+      include: "scope"

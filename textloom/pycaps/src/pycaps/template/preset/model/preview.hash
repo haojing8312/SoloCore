@@ -1,0 +1,4 @@
+it will contain the hash of the files (.css, .py, .json and resources folder)
+then, the preview.mp4 will be generated only if:
+1. it doesn't exist or,
+2. the stored hash doesn't match with the new calculated hash

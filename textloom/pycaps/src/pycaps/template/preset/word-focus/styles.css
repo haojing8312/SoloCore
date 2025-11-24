@@ -1,0 +1,22 @@
+@font-face {
+    font-family: 'CustomFont';
+    src: url('black.ttf') format('truetype');
+}
+
+.word {
+    font-family: CustomFont, sans-serif;
+    font-size: 24px;
+    color: white;
+    padding: 4px 4px;
+    text-shadow: 
+        -2px -2px 2px #000,  
+         2px -2px 2px #000,
+        -2px  2px 2px #000,
+         2px  2px 2px #000;
+    text-transform: uppercase;
+}
+
+.word-being-narrated {
+    background-color: #f76f00;
+    border-radius: 5%;
+}

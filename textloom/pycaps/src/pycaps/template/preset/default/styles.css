@@ -1,0 +1,16 @@
+@font-face {
+    font-family: 'CustomFont';
+    src: url('black.ttf') format('truetype');
+}
+
+.word {
+    font-size: 20px;
+    color: white;
+    font-family: CustomFont, Gadget, sans-serif;
+    font-weight: 800;
+    text-shadow: 
+        1px 1px 0px black, -1px 1px 0px black, 
+        1px -1px 0px black, -1px -1px 0px black,
+        2px 2px 3px rgba(0,0,0,0.7);
+    padding: 3px 5px;
+}

@@ -1,0 +1,353 @@
+name: Security Scan
+
+on:
+  # 推送到主分支时触发
+  push:
+    branches: [ main, develop ]
+  
+  # PR时触发
+  pull_request:
+    branches: [ main ]
+  
+  # 定期扫描 (每周一上午6点 UTC)
+  schedule:
+    - cron: '0 6 * * 1'
+  
+  # 手动触发
+  workflow_dispatch:
+    inputs:
+      severity_threshold:
+        description: '严重程度阈值'
+        required: false
+        default: 'medium'
+        type: choice
+        options:
+          - critical
+          - high
+          - medium
+          - low
+      scan_type:
+        description: '扫描类型'
+        required: false
+        default: 'quick'
+        type: choice
+        options:
+          - quick
+          - full
+
+jobs:
+  security-scan:
+    name: 依赖安全扫描
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    strategy:
+      matrix:
+        python-version: ['3.11']
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+      
+    - name: 设置Python环境
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+        
+    - name: 安装 UV 包管理器
+      uses: astral-sh/setup-uv@v3
+      with:
+        version: "latest"
+        
+    - name: 缓存依赖
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/uv
+          .venv
+        key: ${{ runner.os }}-uv-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-uv-
+          
+    - name: 安装项目依赖
+      run: |
+        uv sync --dev
+        
+    - name: 安装安全扫描工具
+      run: |
+        uv add --group dev safety pip-audit bandit semgrep
+        
+    - name: 创建报告目录
+      run: |
+        mkdir -p security_reports/ci
+        
+    - name: 运行 Safety 安全扫描
+      id: safety
+      continue-on-error: true
+      run: |
+        echo "::group::Safety 依赖漏洞扫描"
+        uv run safety check --json --continue-on-error > security_reports/ci/safety_results.json 2>&1 || true
+        echo "::endgroup::"
+        
+    - name: 运行 pip-audit 安全扫描
+      id: pip-audit
+      continue-on-error: true
+      run: |
+        echo "::group::pip-audit 依赖审计"
+        uv run pip-audit --format=json --desc > security_reports/ci/pip_audit_results.json 2>&1 || true
+        echo "::endgroup::"
+        
+    - name: 运行 Bandit 代码安全扫描
+      id: bandit
+      continue-on-error: true
+      run: |
+        echo "::group::Bandit 代码安全扫描"
+        uv run bandit -r . -f json --exclude .venv,venv,logs,workspace,test,tests > security_reports/ci/bandit_results.json 2>&1 || true
+        echo "::endgroup::"
+        
+    - name: 运行快速漏洞扫描
+      id: quick-scan
+      continue-on-error: true
+      run: |
+        echo "::group::快速安全扫描"
+        chmod +x scripts/security_automation.sh
+        ./scripts/security_automation.sh quick-scan --severity ${{ github.event.inputs.severity_threshold || 'medium' }} --output json
+        echo "::endgroup::"
+        
+    - name: 生成安全报告摘要
+      id: summary
+      run: |
+        echo "::group::生成扫描摘要"
+        
+        # 统计扫描结果
+        safety_issues=0
+        audit_issues=0
+        bandit_issues=0
+        
+        # 检查 Safety 结果
+        if [ -f security_reports/ci/safety_results.json ]; then
+          safety_issues=$(cat security_reports/ci/safety_results.json | jq 'length // 0' 2>/dev/null || echo "0")
+        fi
+        
+        # 检查 pip-audit 结果
+        if [ -f security_reports/ci/pip_audit_results.json ]; then
+          audit_issues=$(cat security_reports/ci/pip_audit_results.json | jq '.vulnerabilities | length // 0' 2>/dev/null || echo "0")
+        fi
+        
+        # 检查 Bandit 结果
+        if [ -f security_reports/ci/bandit_results.json ]; then
+          bandit_issues=$(cat security_reports/ci/bandit_results.json | jq '.results | length // 0' 2>/dev/null || echo "0")
+        fi
+        
+        # 设置输出变量
+        echo "safety_issues=${safety_issues}" >> $GITHUB_OUTPUT
+        echo "audit_issues=${audit_issues}" >> $GITHUB_OUTPUT  
+        echo "bandit_issues=${bandit_issues}" >> $GITHUB_OUTPUT
+        
+        total_issues=$((safety_issues + audit_issues + bandit_issues))
+        echo "total_issues=${total_issues}" >> $GITHUB_OUTPUT
+        
+        echo "::notice::安全扫描摘要 - Safety: ${safety_issues}, pip-audit: ${audit_issues}, Bandit: ${bandit_issues}, 总计: ${total_issues}"
+        echo "::endgroup::"
+        
+    - name: 上传安全报告
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: security-reports-${{ github.run_id }}
+        path: security_reports/
+        retention-days: 30
+        
+    - name: 创建安全扫描评论 (PR)
+      if: github.event_name == 'pull_request' && always()
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          
+          let comment = `## 🔍 安全扫描结果\n\n`;
+          comment += `**扫描时间**: ${new Date().toISOString()}\n`;
+          comment += `**触发事件**: ${context.eventName}\n\n`;
+          
+          // 添加扫描结果摘要
+          const safetyIssues = ${{ steps.summary.outputs.safety_issues }};
+          const auditIssues = ${{ steps.summary.outputs.audit_issues }};
+          const banditIssues = ${{ steps.summary.outputs.bandit_issues }};
+          const totalIssues = ${{ steps.summary.outputs.total_issues }};
+          
+          if (totalIssues === 0) {
+            comment += `✅ **扫描结果**: 未发现安全问题\n\n`;
+          } else {
+            comment += `⚠️ **扫描结果**: 发现 ${totalIssues} 个潜在问题\n\n`;
+            comment += `| 扫描工具 | 发现问题 |\n`;
+            comment += `|----------|----------|\n`;
+            comment += `| Safety | ${safetyIssues} |\n`;
+            comment += `| pip-audit | ${auditIssues} |\n`;
+            comment += `| Bandit | ${banditIssues} |\n\n`;
+          }
+          
+          comment += `📊 **详细报告**: 请查看 GitHub Actions 工件中的完整扫描报告\n\n`;
+          comment += `### 建议操作\n`;
+          if (totalIssues > 0) {
+            comment += `- 🔍 检查详细扫描报告中的具体问题\n`;
+            comment += `- 📦 考虑更新相关依赖包\n`;
+            comment += `- 🔐 修复标识的代码安全问题\n`;
+          }
+          comment += `- ⏰ 定期运行安全扫描\n`;
+          comment += `- 📋 建立安全响应流程\n`;
+          
+          // 发布评论
+          await github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
+          
+    - name: 检查安全阈值 (失败条件)
+      if: always()
+      run: |
+        total_issues=${{ steps.summary.outputs.total_issues }}
+        safety_issues=${{ steps.summary.outputs.safety_issues }}
+        
+        echo "总问题数: $total_issues"
+        echo "Safety 严重问题: $safety_issues"
+        
+        # 设置失败条件
+        # 1. Safety 发现任何已知漏洞
+        # 2. 总问题数超过阈值 (根据严重程度设置)
+        severity_threshold="${{ github.event.inputs.severity_threshold || 'medium' }}"
+        
+        case "$severity_threshold" in
+          "critical")
+            max_issues=0
+            ;;
+          "high")
+            max_issues=5
+            ;;
+          "medium")
+            max_issues=10
+            ;;
+          "low")
+            max_issues=20
+            ;;
+          *)
+            max_issues=10
+            ;;
+        esac
+        
+        if [ "$safety_issues" -gt 0 ]; then
+          echo "::error::发现 $safety_issues 个已知安全漏洞，构建失败"
+          exit 1
+        fi
+        
+        if [ "$total_issues" -gt "$max_issues" ]; then
+          echo "::warning::发现 $total_issues 个安全问题，超过阈值 $max_issues"
+          # 对于中低严重程度，仅警告不失败
+          if [ "$severity_threshold" = "critical" ] || [ "$severity_threshold" = "high" ]; then
+            echo "::error::安全问题数量超过 $severity_threshold 级别阈值，构建失败"
+            exit 1
+          fi
+        fi
+        
+        echo "::notice::安全扫描通过，问题数量在可接受范围内"
+
+  dependency-update-check:
+    name: 依赖更新检查
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+      
+    - name: 设置Python环境
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: 安装 UV 包管理器
+      uses: astral-sh/setup-uv@v3
+      
+    - name: 安装依赖
+      run: |
+        uv sync --dev
+        uv add --group dev requests packaging tomli
+        
+    - name: 检查依赖更新
+      continue-on-error: true
+      run: |
+        echo "::group::检查依赖更新"
+        timeout 300 uv run python scripts/dependency_updater.py --priority high --output markdown > dependency_update_report.md 2>&1 || true
+        echo "::endgroup::"
+        
+    - name: 创建依赖更新 Issue
+      if: github.event_name == 'schedule'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          
+          // 读取更新报告
+          let reportContent = '';
+          try {
+            reportContent = fs.readFileSync('dependency_update_report.md', 'utf8');
+          } catch (error) {
+            reportContent = '无法读取依赖更新报告';
+          }
+          
+          const title = `🔄 依赖更新建议 - ${new Date().toISOString().split('T')[0]}`;
+          
+          const body = `## 自动依赖更新检查报告
+          
+**生成时间**: ${new Date().toISOString()}
+**检查类型**: 定期自动检查
+
+### 📋 更新报告
+
+\`\`\`markdown
+${reportContent}
+\`\`\`
+
+### 🎯 后续操作
+
+- [ ] 审查高优先级安全更新
+- [ ] 测试关键依赖更新
+- [ ] 更新依赖并运行测试
+- [ ] 更新锁定文件
+
+**注意**: 此报告由 GitHub Actions 自动生成。请仔细审查建议的更新，特别是涉及安全的更新。
+
+---
+*由 GitHub Actions 自动创建*`;
+
+          // 创建或更新Issue
+          const { data: issues } = await github.rest.issues.listForRepo({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            state: 'open',
+            labels: 'dependencies,security,automated'
+          });
+          
+          const existingIssue = issues.find(issue => 
+            issue.title.includes('依赖更新建议') && 
+            issue.title.includes(new Date().toISOString().split('T')[0])
+          );
+          
+          if (existingIssue) {
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: existingIssue.number,
+              body: body
+            });
+          } else {
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body,
+              labels: ['dependencies', 'security', 'automated']
+            });
+          }

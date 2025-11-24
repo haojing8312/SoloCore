@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Subtitle Preview Tool</title>
+    <style>
+        body {
+            background-color: #282c34;
+            color: #abb2bf;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #main-container {
+            display: flex;
+            width: 100%;
+            height: 100%;
+        }
+
+        #preview-pane {
+            flex: 2;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #3c4049;
+            box-sizing: border-box;
+        }
+
+        #controls-pane {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            box-sizing: border-box;
+            background-color: #21252b;
+        }
+
+        h2, h3 {
+            color: #61afef;
+            margin-top: 0;
+            margin-bottom: 15px;
+        }
+
+        .section-header {
+            font-size: 14px;
+            color: #61afef;
+            font-weight: bold;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #3c4049;
+            padding-bottom: 5px;
+        }
+
+        /* Common form elements */
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #abb2bf;
+            font-size: 13px;
+        }
+
+        select, textarea, input[type="text"] {
+            box-sizing: border-box;
+            width: 100%;
+            background-color: #2c313a;
+            border: 1px solid #4b515d;
+            border-radius: 4px;
+            padding: 8px;
+            color: #abb2bf;
+            font-family: inherit;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+
+        textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+
+        select {
+            appearance: none;
+            -webkit-appearance: none;
+            background-image: url('data:image/svg+xml;utf8,<svg fill="%23abb2bf" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/><path d="M0 0h24v24H0z" fill="none"/></svg>');
+            background-repeat: no-repeat;
+            background-position: right 8px center;
+            background-size: 16px;
+            cursor: pointer;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #2c313a;
+            border-radius: 8px;
+            border: 1px solid #3c4049;
+        }
+
+        button {
+            color: #abb2bf;
+            background-color: #4b5263;
+            border: none;
+            border-radius: 5px;
+            padding: 10px 15px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            background-color: #5c6370;
+        }
+
+        #subtitle-preview-frame {
+            border: 1px solid #4b515d;
+            border-radius: 8px;
+            width: 100%;
+            height: 100%;
+            flex-grow: 1;
+            background-color: #1a1e24;
+        }
+    </style>
+</head>
+<body>
+    <div id="main-container">
+        <div id="preview-pane">
+            <h2>Subtitle Preview</h2>
+            <iframe id="subtitle-preview-frame"></iframe>
+        </div>
+
+        <div id="controls-pane">
+            <h2>Subtitle Settings</h2>
+
+            <div class="form-group">
+                <div class="section-header">Segment Text Editor</div>
+                <label for="segment-text">Edit Segment Text:</label>
+                <textarea id="segment-text" rows="5">This is an example</textarea>
+                <button id="update-preview-btn">Update Preview</button>
+            </div>
+            
+            <div class="form-group">
+                <div class="section-header">Segment Tags</div>
+                <label for="segment-tags">Segment Tags (comma separated):</label>
+                <textarea id="segment-tags" placeholder="e.g., scene, intro, dialogue"></textarea>
+            </div>
+
+            <div class="form-group">
+                <div class="section-header">Line Settings</div>
+
+                <label for="line-state">Line State:</label>
+                <select id="line-state">
+                    <option value="line-not-narrated-yet">Not Narrated Yet</option>
+                    <option value="line-already-narrated">Already Narrated</option>
+                    <option value="line-being-narrated">Being Narrated</option>
+                </select>
+
+                <label for="line-tags">Line Tags (comma separated):</label>
+                <textarea id="line-tags" placeholder="e.g., question, important"></textarea>
+            </div>
+
+            <div class="form-group">
+                <div class="section-header">Word Settings</div>
+                <label for="word-select">Select Word:</label>
+                <select id="word-select">
+                    </select>
+
+                <label for="word-state">Word State:</label>
+                <select id="word-state">
+                    <option value="word-not-narrated-yet">Not Narrated Yet</option>
+                    <option value="word-already-narrated">Already Narrated</option>
+                    <option value="word-being-narrated">Being Narrated</option>
+                </select>
+
+                <label for="word-tags">Word Tags (comma separated):</label>
+                <textarea id="word-tags" placeholder="e.g., emphasis, typo"></textarea>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function waitForPywebviewReady() {
+            function isPywebviewReady() {
+                if (!window.pywebview || !window.pywebview.api) {
+                    return false;
+                }
+
+                const apis = [
+                    "get_renderer_html",
+                ]
+                for (const api of apis) {
+                    if (typeof window.pywebview.api[api] !== "function") {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+
+            return new Promise((resolve, reject) => {
+                if (isPywebviewReady()) {
+                    resolve();
+                } else {
+                    const interval = setInterval(() => {
+                        if (isPywebviewReady()) {
+                            clearInterval(interval);
+                            resolve(window.pywebview.api);
+                        }
+                    }, 100);
+                }
+            });
+        }
+
+        async function main() {
+            const api = await waitForPywebviewReady();
+
+            const subtitlePreviewFrame = document.getElementById('subtitle-preview-frame');
+            const segmentTextarea = document.getElementById('segment-text');
+            const updatePreviewBtn = document.getElementById('update-preview-btn');
+            const lineStateSelect = document.getElementById('line-state');
+            const lineTagsTextarea = document.getElementById('line-tags');
+            const wordSelect = document.getElementById('word-select');
+            const wordStateSelect = document.getElementById('word-state');
+            const wordTagsTextarea = document.getElementById('word-tags');
+            const segmentTagsTextarea = document.getElementById('segment-tags');
+
+            let currentSegmentData = {
+                text: segmentTextarea.value,
+                tags: [],
+                line: {
+                    text: '',
+                    state: 'line-not-narrated-yet',
+                    tags: [],
+                    words: []
+                }
+            };
+
+            function rebuildSegmentData() {
+                currentSegmentData.line.text = segmentTextarea.value;
+                currentSegmentData.line.words = segmentTextarea.value.split(/\s+/).map(wordText => ({
+                    text: wordText,
+                    state: 'word-not-narrated-yet',
+                    tags: []
+                }));
+                populateWordSelect();
+            }
+
+            async function updateIframeContent() {
+                const iframeContent = await api.get_renderer_html(currentSegmentData);
+                subtitlePreviewFrame.contentDocument.open();
+                subtitlePreviewFrame.contentDocument.write(iframeContent);
+                subtitlePreviewFrame.contentDocument.body.style.backgroundColor = '#fff';
+                subtitlePreviewFrame.contentDocument.body.style.backgroundImage = 
+                    'linear-gradient(45deg, #ddd 25%, transparent 25%),' +
+                    'linear-gradient(-45deg, #ddd 25%, transparent 25%),' +
+                    'linear-gradient(45deg, transparent 75%, #ddd 75%),' +
+                    'linear-gradient(-45deg, transparent 75%, #ddd 75%)';
+                subtitlePreviewFrame.contentDocument.body.style.backgroundSize = '20px 20px';
+                subtitlePreviewFrame.contentDocument.body.style.backgroundPosition = '0 0, 0 10px, 10px -10px, -10px 0px';
+                subtitlePreviewFrame.contentDocument.close();
+            }
+            const debouncedUpdateIframeContent = debounce(updateIframeContent);
+
+            function populateWordSelect() {
+                wordSelect.innerHTML = '<option value="">-- Select a word --</option>';
+                currentSegmentData.line.words.forEach((word, index) => {
+                    const option = document.createElement('option');
+                    option.value = index;
+                    option.textContent = `Word ${index + 1}: "${word.text}"`;
+                    wordSelect.appendChild(option);
+                });
+                wordSelect.value = "";
+            }
+
+            function debounce(func, delay = 500) {
+                let timeoutId;
+                return function(...args) {
+                    clearTimeout(timeoutId);
+                    timeoutId = setTimeout(() => func.apply(this, args), delay);
+                };
+            }
+
+            updatePreviewBtn.addEventListener('click', () => {
+                rebuildSegmentData();
+                updateIframeContent();
+            });
+
+            lineStateSelect.addEventListener('change', (event) => {
+                currentSegmentData.line.state = event.target.value;
+                updateIframeContent();
+            });
+
+            lineTagsTextarea.addEventListener('input', (event) => {
+                currentSegmentData.line.tags = event.target.value.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
+                debouncedUpdateIframeContent();
+            });
+
+            wordSelect.addEventListener('change', (event) => {
+                const selectedWordIndex = event.target.value;
+                if (selectedWordIndex !== "") {
+                    const word = currentSegmentData.line.words[selectedWordIndex];
+                    wordStateSelect.value = word.state;
+                    wordTagsTextarea.value = word.tags.join(', ');
+                } else {
+                    wordStateSelect.value = 'word-not-narrated-yet';
+                    wordTagsTextarea.value = '';
+                }
+            });
+
+            wordStateSelect.addEventListener('change', (event) => {
+                const selectedWordIndex = wordSelect.value;
+                if (selectedWordIndex !== "") {
+                    currentSegmentData.line.words[selectedWordIndex].state = event.target.value;
+                    updateIframeContent();
+                }
+            });
+
+            wordTagsTextarea.addEventListener('input', (event) => {
+                const selectedWordIndex = wordSelect.value;
+                if (selectedWordIndex !== "") {
+                    currentSegmentData.line.words[selectedWordIndex].tags = event.target.value.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
+                    debouncedUpdateIframeContent();
+                }
+            });
+
+            segmentTagsTextarea.addEventListener('input', (event) => {
+                currentSegmentData.tags = event.target.value.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
+                debouncedUpdateIframeContent();
+            });
+
+
+            rebuildSegmentData();
+            updateIframeContent();
+        }
+
+        main();
+    </script>
+</body>
+</html>

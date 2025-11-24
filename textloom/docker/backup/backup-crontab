@@ -1,0 +1,135 @@
+# TextLoom 备份调度 Cron 任务
+# 在Docker容器中运行的备份调度任务
+
+# 环境变量
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+SHELL=/bin/bash
+PYTHONPATH=/app
+
+# 每日备份 - 凌晨2点
+0 2 * * * cd /app && /usr/local/bin/python /app/scripts/backup_manager.py schedule --type daily >> /app/logs/backup_scheduler.log 2>&1
+
+# 每周备份 - 周日凌晨3点
+0 3 * * 0 cd /app && /usr/local/bin/python /app/scripts/backup_manager.py schedule --type weekly >> /app/logs/backup_scheduler.log 2>&1
+
+# 每月备份 - 每月1号凌晨4点
+0 4 1 * * cd /app && /usr/local/bin/python /app/scripts/backup_manager.py schedule --type monthly >> /app/logs/backup_scheduler.log 2>&1
+
+# 备份清理 - 每天凌晨5点
+0 5 * * * cd /app && /bin/bash -c "
+    # 清理本地过期备份
+    find /backups/local -name '*.tar.gz' -type f -mtime +30 -delete
+    find /backups/local -name '*.json' -type f -mtime +30 -delete
+    
+    # 清理过期日志
+    find /app/logs -name '*.log.*' -type f -mtime +7 -delete
+    
+    # 记录清理结果
+    echo \"[$(date)] 备份清理完成\" >> /app/logs/backup_scheduler.log
+"
+
+# 备份验证 - 每天上午6点验证最近的备份
+0 6 * * * cd /app && /bin/bash -c "
+    # 获取最新备份ID并验证
+    LATEST_BACKUP=$(ls -t /backups/local/*.json 2>/dev/null | head -1 | xargs -r basename -s .json)
+    if [ -n \"$LATEST_BACKUP\" ]; then
+        echo \"[$(date)] 验证备份: $LATEST_BACKUP\" >> /app/logs/backup_scheduler.log
+        /usr/local/bin/python /app/scripts/backup_manager.py verify --backup-id \"$LATEST_BACKUP\" >> /app/logs/backup_scheduler.log 2>&1
+    else
+        echo \"[$(date)] 没有找到备份文件进行验证\" >> /app/logs/backup_scheduler.log
+    fi
+"
+
+# 系统健康检查 - 每15分钟
+*/15 * * * * cd /app && timeout 60 /usr/local/bin/python /app/scripts/disaster_recovery.py assess > /tmp/health_check_$(date +\%H\%M).json 2>&1 || echo "[$(date)] 健康检查超时或失败" >> /app/logs/backup_scheduler.log
+
+# 监控数据收集 - 每5分钟
+*/5 * * * * cd /app && /bin/bash -c "
+    # 收集系统指标
+    df -h /backups 2>/dev/null || true
+    free -m
+    uptime
+" >> /app/logs/system_metrics.log 2>&1
+
+# 备份状态报告 - 每天早上8点
+0 8 * * * cd /app && /usr/local/bin/python /app/scripts/backup_monitor.py status > /tmp/daily_backup_report.json 2>&1 && echo "[$(date)] 生成每日备份报告" >> /app/logs/backup_scheduler.log
+
+# 网络连接检查 - 每小时
+0 * * * * cd /app && /bin/bash -c "
+    # 检查关键服务连接
+    if [ -n \"${REDIS_HOST:-}\" ]; then
+        nc -z \"$REDIS_HOST\" \"${REDIS_PORT:-6379}\" || echo \"[$(date)] Redis连接失败\" >> /app/logs/connectivity_check.log
+    fi
+    
+    # 检查远程存储连接
+    if [ \"${BACKUP_REMOTE_STORAGE_ENABLED:-false}\" = \"true\" ]; then
+        if [ -n \"${MINIO_ENDPOINT:-}\" ]; then
+            nc -z \"$(echo $MINIO_ENDPOINT | cut -d: -f1)\" \"$(echo $MINIO_ENDPOINT | cut -d: -f2)\" || echo \"[$(date)] MinIO连接失败\" >> /app/logs/connectivity_check.log
+        fi
+    fi
+"
+
+# 数据库连接检查 - 每30分钟
+*/30 * * * * cd /app && /bin/bash -c "
+    if [ -n \"${DATABASE_URL:-}\" ]; then
+        timeout 10 /usr/local/bin/python -c \"
+import asyncio
+import asyncpg
+import sys
+import os
+
+async def check_db():
+    try:
+        conn = await asyncpg.connect(os.environ['DATABASE_URL'])
+        await conn.fetchrow('SELECT 1')
+        await conn.close()
+        print('[$(date)] 数据库连接正常')
+    except Exception as e:
+        print(f'[$(date)] 数据库连接失败: {e}')
+        sys.exit(1)
+
+asyncio.run(check_db())
+\" >> /app/logs/connectivity_check.log 2>&1 || echo \"[$(date)] 数据库连接检查超时\" >> /app/logs/connectivity_check.log
+    fi
+"
+
+# 磁盘空间告警 - 每小时检查
+0 * * * * cd /app && /bin/bash -c "
+    USAGE=$(df /backups | tail -1 | awk '{print $5}' | sed 's/%//')
+    if [ \"$USAGE\" -gt 85 ]; then
+        echo \"[$(date)] 告警: 备份磁盘使用率超过85% (当前: ${USAGE}%)\" >> /app/logs/disk_space_alert.log
+        
+        # 尝试清理一些旧备份
+        find /backups/local -name '*.tar.gz' -type f -mtime +7 -delete 2>/dev/null || true
+    fi
+"
+
+# 容器资源使用监控 - 每10分钟
+*/10 * * * * cd /app && /bin/bash -c "
+    echo \"[$(date)] CPU: $(cat /proc/loadavg | cut -d' ' -f1), Memory: $(free | grep Mem | awk '{printf \"%.1f%%\", \$3/\$2 * 100.0}')\" >> /app/logs/resource_usage.log
+"
+
+# 服务进程检查 - 每5分钟
+*/5 * * * * cd /app && /bin/bash -c "
+    # 检查关键进程是否运行
+    if ! pgrep -f 'backup_monitor.py' > /dev/null; then
+        echo \"[$(date)] 告警: 备份监控服务未运行\" >> /app/logs/process_check.log
+    fi
+    
+    if ! pgrep -f 'supervisord' > /dev/null; then
+        echo \"[$(date)] 告警: Supervisor进程管理器未运行\" >> /app/logs/process_check.log
+    fi
+"
+
+# 日志文件大小检查和轮转 - 每天凌晨1点
+0 1 * * * cd /app && /bin/bash -c "
+    # 检查并轮转大日志文件
+    find /app/logs -name '*.log' -size +50M -exec gzip {} \;
+    
+    # 删除超过30天的压缩日志
+    find /app/logs -name '*.log.gz' -mtime +30 -delete
+    
+    echo \"[$(date)] 日志轮转完成\" >> /app/logs/log_rotation.log
+"
+
+# 空行确保文件正确结尾

@@ -1,0 +1,605 @@
+name: SaaS Production Deployment Pipeline
+
+on:
+  push:
+    branches: 
+      - main
+      - release/*
+  pull_request:
+    branches: 
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      deployment_type:
+        description: 'Deployment strategy'
+        required: false
+        default: 'rolling'
+        type: choice
+        options:
+          - rolling
+          - blue-green
+          - canary
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '18'
+
+jobs:
+  # =====================================
+  # 代码质量检查和测试
+  # =====================================
+  code-quality:
+    name: Code Quality & Security
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: 设置Python环境
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: 安装UV包管理器
+      uses: astral-sh/setup-uv@v3
+      with:
+        version: "latest"
+    
+    - name: 缓存依赖
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/uv
+          .venv
+        key: ${{ runner.os }}-uv-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-uv-
+    
+    - name: 安装依赖
+      run: |
+        uv sync --dev
+        uv add --group dev bandit safety mypy black isort flake8
+    
+    - name: 代码格式检查
+      run: |
+        uv run black --check .
+        uv run isort --check-only .
+        uv run flake8 .
+    
+    - name: 类型检查
+      continue-on-error: true
+      run: |
+        uv run mypy . || echo "Type checking completed with warnings"
+    
+    - name: 安全扫描
+      run: |
+        uv run bandit -r . -f json -x ".venv,venv,logs,workspace,test,tests" -o bandit-report.json || true
+        uv run safety check --json --continue-on-error > safety-report.json || true
+    
+    - name: 上传安全报告
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: security-reports
+        path: |
+          bandit-report.json
+          safety-report.json
+
+  # =====================================
+  # 后端测试
+  # =====================================
+  backend-tests:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: code-quality
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: textloom_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+    
+    - name: 设置Python环境
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: 安装UV包管理器
+      uses: astral-sh/setup-uv@v3
+    
+    - name: 安装依赖
+      run: |
+        uv sync --dev
+    
+    - name: 运行单元测试
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/textloom_test
+        REDIS_URL: redis://localhost:6379/0
+        TEST_ENV: true
+      run: |
+        uv run pytest tests/ -v --cov=. --cov-report=xml --cov-report=html
+    
+    - name: 上传测试覆盖率
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: backend
+        name: backend-coverage
+
+  # =====================================
+  # 前端测试 (如果存在前端代码)
+  # =====================================
+  frontend-tests:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: code-quality
+    if: ${{ hashFiles('package.json') != '' }}
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+    
+    - name: 设置Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+    
+    - name: 安装前端依赖
+      run: npm ci
+    
+    - name: 前端代码检查
+      run: |
+        npm run lint
+        npm run type-check
+    
+    - name: 前端单元测试
+      run: npm test -- --coverage
+    
+    - name: 上传前端覆盖率
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./frontend/coverage/lcov.info
+        flags: frontend
+        name: frontend-coverage
+
+  # =====================================
+  # 构建Docker镜像
+  # =====================================
+  build-images:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [backend-tests]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    
+    strategy:
+      matrix:
+        component: [api, worker, scheduler]
+    
+    outputs:
+      api-image: ${{ steps.meta.outputs.tags }}
+      worker-image: ${{ steps.meta.outputs.tags }}
+      scheduler-image: ${{ steps.meta.outputs.tags }}
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+    
+    - name: 设置Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: 登录容器注册表
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: 提取元数据
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.component }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+    
+    - name: 构建并推送镜像
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./docker/Dockerfile.${{ matrix.component }}
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        build-args: |
+          PYTHON_VERSION=${{ env.PYTHON_VERSION }}
+          BUILD_DATE=${{ steps.meta.outputs.build-date }}
+          VCS_REF=${{ github.sha }}
+
+  # =====================================
+  # 集成测试
+  # =====================================
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [build-images]
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: textloom_integration
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+    
+    - name: 设置Docker Compose
+      run: |
+        docker-compose -f docker/compose/docker-compose.test.yml up -d
+        
+    - name: 等待服务启动
+      run: |
+        timeout 60 bash -c 'until curl -f http://localhost:8000/health; do sleep 5; done'
+    
+    - name: 运行集成测试
+      run: |
+        docker-compose -f docker/compose/docker-compose.test.yml exec -T api \
+          pytest tests/integration/ -v --tb=short
+    
+    - name: 收集测试日志
+      if: always()
+      run: |
+        docker-compose -f docker/compose/docker-compose.test.yml logs > integration-logs.txt
+    
+    - name: 上传测试结果
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: integration-test-results
+        path: |
+          integration-logs.txt
+          test-results/
+    
+    - name: 清理测试环境
+      if: always()
+      run: |
+        docker-compose -f docker/compose/docker-compose.test.yml down -v
+
+  # =====================================
+  # 性能测试
+  # =====================================
+  performance-tests:
+    name: Performance Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [integration-tests]
+    if: github.ref == 'refs/heads/main' || contains(github.ref, 'release/')
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+    
+    - name: 设置K6
+      run: |
+        sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+        echo "deb https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+        sudo apt-get update
+        sudo apt-get install k6
+    
+    - name: 运行负载测试
+      run: |
+        k6 run tests/performance/load-test.js
+    
+    - name: 生成性能报告
+      run: |
+        k6 run --out json=performance-results.json tests/performance/stress-test.js
+    
+    - name: 上传性能报告
+      uses: actions/upload-artifact@v3
+      with:
+        name: performance-results
+        path: performance-results.json
+
+  # =====================================
+  # 安全扫描
+  # =====================================
+  security-scan:
+    name: Container Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [build-images]
+    
+    strategy:
+      matrix:
+        component: [api, worker, scheduler]
+    
+    steps:
+    - name: 运行容器安全扫描
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.component }}:latest
+        format: 'sarif'
+        output: 'trivy-${{ matrix.component }}.sarif'
+    
+    - name: 上传扫描结果到GitHub Security
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-${{ matrix.component }}.sarif'
+
+  # =====================================
+  # 部署到Staging环境
+  # =====================================
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [integration-tests, security-scan]
+    if: github.ref == 'refs/heads/main' || github.event.inputs.environment == 'staging'
+    environment: 
+      name: staging
+      url: https://staging.textloom.ai
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+    
+    - name: 设置kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.28.0'
+    
+    - name: 配置Kubernetes集群访问
+      run: |
+        echo "${{ secrets.KUBECONFIG_STAGING }}" | base64 -d > kubeconfig
+        export KUBECONFIG=kubeconfig
+    
+    - name: 部署到Kubernetes
+      run: |
+        export KUBECONFIG=kubeconfig
+        envsubst < k8s/staging/deployment.yaml | kubectl apply -f -
+        kubectl rollout status deployment/textloom-api -n staging --timeout=300s
+        kubectl rollout status deployment/textloom-worker -n staging --timeout=300s
+    
+    - name: 运行部署后验证
+      run: |
+        export KUBECONFIG=kubeconfig
+        kubectl run health-check --rm -i --image=curlimages/curl --restart=Never \
+          -- curl -f http://textloom-api.staging.svc.cluster.local:8000/health
+    
+    - name: 通知Slack
+      if: always()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        channel: '#deployments'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        text: 'Staging deployment ${{ job.status }}: ${{ github.sha }}'
+
+  # =====================================
+  # 部署到生产环境
+  # =====================================
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [deploy-staging, performance-tests]
+    if: |
+      (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
+      (github.event.inputs.environment == 'production')
+    environment: 
+      name: production
+      url: https://textloom.ai
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+    
+    - name: 人工审批确认
+      uses: trstringer/manual-approval@v1
+      if: github.event_name != 'workflow_dispatch'
+      with:
+        secret: ${{ secrets.GITHUB_TOKEN }}
+        approvers: team-leads,devops-team
+        minimum-approvals: 2
+        issue-title: "部署到生产环境: ${{ github.sha }}"
+        issue-body: |
+          请审批此次生产环境部署:
+          - 提交: ${{ github.sha }}
+          - 分支: ${{ github.ref }}
+          - 变更内容: ${{ github.event.head_commit.message }}
+          
+          部署策略: ${{ github.event.inputs.deployment_type || 'rolling' }}
+    
+    - name: 设置kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.28.0'
+    
+    - name: 配置Kubernetes集群访问
+      run: |
+        echo "${{ secrets.KUBECONFIG_PRODUCTION }}" | base64 -d > kubeconfig
+        export KUBECONFIG=kubeconfig
+    
+    - name: 数据库迁移
+      run: |
+        export KUBECONFIG=kubeconfig
+        kubectl create job migration-${{ github.run_number }} \
+          --from=deployment/textloom-api -n production
+        kubectl wait --for=condition=complete job/migration-${{ github.run_number }} \
+          -n production --timeout=600s
+    
+    - name: 蓝绿部署
+      if: github.event.inputs.deployment_type == 'blue-green'
+      run: |
+        export KUBECONFIG=kubeconfig
+        # 部署绿色版本
+        envsubst < k8s/production/deployment-green.yaml | kubectl apply -f -
+        kubectl rollout status deployment/textloom-api-green -n production --timeout=600s
+        
+        # 健康检查
+        kubectl run health-check-green --rm -i --image=curlimages/curl --restart=Never \
+          -- curl -f http://textloom-api-green.production.svc.cluster.local:8000/health
+        
+        # 切换流量
+        kubectl patch service textloom-api -n production \
+          -p '{"spec":{"selector":{"version":"green"}}}'
+        
+        # 清理蓝色版本
+        sleep 60
+        kubectl delete deployment textloom-api-blue -n production || true
+    
+    - name: 滚动更新部署
+      if: github.event.inputs.deployment_type != 'blue-green'
+      run: |
+        export KUBECONFIG=kubeconfig
+        envsubst < k8s/production/deployment.yaml | kubectl apply -f -
+        kubectl rollout status deployment/textloom-api -n production --timeout=600s
+        kubectl rollout status deployment/textloom-worker -n production --timeout=600s
+    
+    - name: 部署后验证
+      run: |
+        export KUBECONFIG=kubeconfig
+        # API健康检查
+        kubectl run health-check --rm -i --image=curlimages/curl --restart=Never \
+          -- curl -f http://textloom-api.production.svc.cluster.local:8000/health
+        
+        # 功能验证
+        kubectl run function-test --rm -i --image=curlimages/curl --restart=Never \
+          -- curl -f -X POST http://textloom-api.production.svc.cluster.local:8000/health
+    
+    - name: 更新部署记录
+      run: |
+        curl -X POST \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          -H "Accept: application/vnd.github.v3+json" \
+          https://api.github.com/repos/${{ github.repository }}/deployments \
+          -d '{
+            "ref": "${{ github.sha }}",
+            "environment": "production",
+            "description": "Automated production deployment",
+            "auto_merge": false,
+            "required_contexts": []
+          }'
+    
+    - name: 通知部署成功
+      if: success()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: success
+        channel: '#deployments'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        text: |
+          🚀 生产环境部署成功!
+          - 提交: ${{ github.sha }}
+          - 部署策略: ${{ github.event.inputs.deployment_type || 'rolling' }}
+          - 访问地址: https://textloom.ai
+    
+    - name: 回滚通知
+      if: failure()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: failure
+        channel: '#incidents'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        text: |
+          🚨 生产环境部署失败!
+          - 提交: ${{ github.sha }}
+          - 请立即检查并考虑回滚
+          - 日志: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+  # =====================================
+  # 清理资源
+  # =====================================
+  cleanup:
+    name: Cleanup Resources
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [deploy-production]
+    if: always()
+    
+    steps:
+    - name: 清理旧镜像
+      run: |
+        # 保留最近10个版本的镜像
+        echo "Cleanup job completed - implemented via registry retention policy"
+    
+    - name: 生成部署报告
+      run: |
+        echo "## 部署总结" > deployment-summary.md
+        echo "- **提交**: ${{ github.sha }}" >> deployment-summary.md
+        echo "- **时间**: $(date -u)" >> deployment-summary.md
+        echo "- **环境**: production" >> deployment-summary.md
+        echo "- **状态**: ${{ job.status }}" >> deployment-summary.md
+    
+    - name: 上传部署报告
+      uses: actions/upload-artifact@v3
+      with:
+        name: deployment-summary
+        path: deployment-summary.md

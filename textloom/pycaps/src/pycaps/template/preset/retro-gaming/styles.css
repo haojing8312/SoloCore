@@ -1,0 +1,29 @@
+@font-face {
+    font-family: 'Press Start 2P';
+    src: url('PressStart2P.ttf');
+}
+
+.word {
+    font-family: 'Press Start 2P', 'Courier New', Courier, monospace;
+    font-size: 16px;
+    color: #E0E0E0;
+    background-color: rgba(20, 20, 80, 0.85);
+    padding: 6px 7px;
+    border: 3px solid #FFFFFF;
+}
+
+.word-being-narrated {
+    color: #FFFF88;
+}
+
+.word-already-narrated {
+    color: #FFFFFF;
+}
+
+.word-not-narrated-yet {
+    display: none;
+}
+
+.line-being-narrated {
+    background-color: rgba(30, 30, 100, 0.85);
+}

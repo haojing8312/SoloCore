@@ -1,0 +1,108 @@
+/* 默认动态字幕样式 */
+
+.subtitle {
+    font-family: 'Arial', 'Microsoft YaHei', sans-serif;
+    font-size: 24px;
+    color: #FFFFFF;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 8px 16px;
+    border-radius: 6px;
+    text-align: center;
+    font-weight: bold;
+    line-height: 1.2;
+    max-width: 80%;
+    margin: 0 auto;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.word {
+    display: inline-block;
+    transition: all 0.3s ease;
+    margin: 0 2px;
+}
+
+.word.highlight {
+    color: #FFD700;
+    transform: scale(1.1);
+}
+
+.word.active {
+    animation: word-pop 0.5s ease-in-out;
+}
+
+@keyframes word-pop {
+    0% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.2);
+        color: #FFD700;
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+/* 淡入动画 */
+.subtitle.fade-in {
+    animation: fade-in 0.5s ease-in;
+}
+
+@keyframes fade-in {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* 上滑动画 */
+.subtitle.slide-up {
+    animation: slide-up 0.6s ease-out;
+}
+
+@keyframes slide-up {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* 弹出动画 */
+.subtitle.pop {
+    animation: pop 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+@keyframes pop {
+    0% {
+        transform: scale(0.8) translateY(10px);
+        opacity: 0;
+    }
+    100% {
+        transform: scale(1) translateY(0);
+        opacity: 1;
+    }
+}
+
+/* 打字机效果 */
+.subtitle.typewriter {
+    overflow: hidden;
+    white-space: nowrap;
+    animation: typewriter 2s steps(40, end);
+}
+
+@keyframes typewriter {
+    from {
+        width: 0;
+    }
+    to {
+        width: 100%;
+    }
+}

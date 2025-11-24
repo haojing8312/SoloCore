@@ -1,0 +1,348 @@
+version: '3.8'
+
+# TextLoom 备份和灾难恢复服务编排
+# 提供完整的容器化备份解决方案
+
+services:
+  # 备份管理服务
+  backup-manager:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backup
+    container_name: textloom-backup-manager
+    restart: unless-stopped
+    environment:
+      # 数据库配置
+      - DATABASE_URL=${DATABASE_URL}
+      
+      # Redis配置
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      
+      # 备份配置
+      - BACKUP_LOCAL_DIR=/backups/local
+      - BACKUP_DAILY_RETENTION_DAYS=${BACKUP_DAILY_RETENTION_DAYS:-7}
+      - BACKUP_WEEKLY_RETENTION_WEEKS=${BACKUP_WEEKLY_RETENTION_WEEKS:-4}
+      - BACKUP_MONTHLY_RETENTION_MONTHS=${BACKUP_MONTHLY_RETENTION_MONTHS:-12}
+      - BACKUP_COMPRESSION_ENABLED=${BACKUP_COMPRESSION_ENABLED:-true}
+      - BACKUP_ENCRYPTION_ENABLED=${BACKUP_ENCRYPTION_ENABLED:-true}
+      - BACKUP_ENCRYPTION_KEY=${BACKUP_ENCRYPTION_KEY}
+      - BACKUP_REMOTE_STORAGE_ENABLED=${BACKUP_REMOTE_STORAGE_ENABLED:-true}
+      - BACKUP_PARALLEL_JOBS=${BACKUP_PARALLEL_JOBS:-4}
+      
+      # 存储配置
+      - STORAGE_TYPE=${STORAGE_TYPE:-minio}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+      - MINIO_BUCKET=${MINIO_BUCKET:-textloom-backups}
+      - OBS_ACCESS_KEY=${OBS_ACCESS_KEY}
+      - OBS_SECRET_KEY=${OBS_SECRET_KEY}
+      - OBS_ENDPOINT=${OBS_ENDPOINT}
+      - OBS_BUCKET=${OBS_BUCKET}
+      
+      # 监控配置
+      - BACKUP_MONITOR_INTERVAL=${BACKUP_MONITOR_INTERVAL:-300}
+      - BACKUP_MAX_AGE_HOURS=${BACKUP_MAX_AGE_HOURS:-25}
+      
+      # 告警配置
+      - BACKUP_EMAIL_ALERTS_ENABLED=${BACKUP_EMAIL_ALERTS_ENABLED:-false}
+      - BACKUP_SMTP_SERVER=${BACKUP_SMTP_SERVER}
+      - BACKUP_SMTP_PORT=${BACKUP_SMTP_PORT:-587}
+      - BACKUP_SMTP_USERNAME=${BACKUP_SMTP_USERNAME}
+      - BACKUP_SMTP_PASSWORD=${BACKUP_SMTP_PASSWORD}
+      - BACKUP_EMAIL_FROM=${BACKUP_EMAIL_FROM}
+      - BACKUP_EMAIL_TO=${BACKUP_EMAIL_TO}
+      
+      - BACKUP_WEBHOOK_ALERTS_ENABLED=${BACKUP_WEBHOOK_ALERTS_ENABLED:-false}
+      - BACKUP_WEBHOOK_URL=${BACKUP_WEBHOOK_URL}
+      - BACKUP_WEBHOOK_SECRET=${BACKUP_WEBHOOK_SECRET}
+      
+      - BACKUP_SLACK_ALERTS_ENABLED=${BACKUP_SLACK_ALERTS_ENABLED:-false}
+      - BACKUP_SLACK_WEBHOOK_URL=${BACKUP_SLACK_WEBHOOK_URL}
+      - BACKUP_SLACK_CHANNEL=${BACKUP_SLACK_CHANNEL:-#alerts}
+      
+    volumes:
+      # 备份数据卷
+      - backup-data:/backups/local
+      - backup-config:/backups/config
+      
+      # 应用数据卷（只读访问）
+      - textloom-workspace:/app/workspace:ro
+      - textloom-logs:/app/logs:ro
+      
+      # PostgreSQL备份访问
+      - postgres-data:/var/lib/postgresql/data:ro
+      
+      # Redis备份访问
+      - redis-data:/var/lib/redis:ro
+      
+      # 备份脚本和配置
+      - ./scripts:/app/scripts:ro
+      - ./config.py:/app/config.py:ro
+      
+    networks:
+      - textloom-network
+      - backup-network
+      
+    depends_on:
+      - postgres
+      - redis
+      
+    healthcheck:
+      test: ["CMD", "python", "-c", "import asyncio; asyncio.run(__import__('scripts.backup_manager').BackupManager(__import__('config').Settings(), __import__('scripts.backup_manager').create_backup_config()).backup_manager.monitor_backups())"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+      
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.1'
+          
+    labels:
+      - "com.textloom.service=backup-manager"
+      - "com.textloom.component=backup"
+
+  # 备份监控服务
+  backup-monitor:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backup
+    container_name: textloom-backup-monitor
+    restart: unless-stopped
+    command: ["python", "/app/scripts/backup_monitor.py", "start"]
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      
+      # 继承backup-manager的所有配置
+      - BACKUP_LOCAL_DIR=/backups/local
+      - BACKUP_MONITOR_INTERVAL=${BACKUP_MONITOR_INTERVAL:-300}
+      - BACKUP_METRICS_RETENTION_DAYS=${BACKUP_METRICS_RETENTION_DAYS:-30}
+      
+      # 监控专用配置
+      - BACKUP_EMAIL_ALERTS_ENABLED=${BACKUP_EMAIL_ALERTS_ENABLED:-false}
+      - BACKUP_WEBHOOK_ALERTS_ENABLED=${BACKUP_WEBHOOK_ALERTS_ENABLED:-false}
+      - BACKUP_SLACK_ALERTS_ENABLED=${BACKUP_SLACK_ALERTS_ENABLED:-false}
+      
+    volumes:
+      - backup-data:/backups/local:ro
+      - backup-monitor-data:/app/backup_monitor_data
+      - ./scripts:/app/scripts:ro
+      - ./config.py:/app/config.py:ro
+      
+    ports:
+      - "${BACKUP_MONITOR_PORT:-8081}:8080"
+      
+    networks:
+      - textloom-network
+      - backup-network
+      
+    depends_on:
+      - backup-manager
+      
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      
+    labels:
+      - "com.textloom.service=backup-monitor"
+      - "com.textloom.component=backup"
+
+  # 备份调度服务
+  backup-scheduler:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backup
+    container_name: textloom-backup-scheduler
+    restart: unless-stopped
+    command: ["crond", "-f", "-d", "8"]
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - BACKUP_LOCAL_DIR=/backups/local
+      - BACKUP_MAX_RETRIES=${BACKUP_MAX_RETRIES:-3}
+      - BACKUP_RETRY_DELAY=${BACKUP_RETRY_DELAY:-300}
+      
+    volumes:
+      - backup-data:/backups/local
+      - backup-logs:/app/logs
+      - ./scripts:/app/scripts:ro
+      - ./config.py:/app/config.py:ro
+      - ./docker/backup-crontab:/etc/crontabs/root
+      
+    networks:
+      - textloom-network
+      - backup-network
+      
+    depends_on:
+      - backup-manager
+      
+    labels:
+      - "com.textloom.service=backup-scheduler"
+      - "com.textloom.component=backup"
+
+  # MinIO存储服务（可选的远程备份存储）
+  minio:
+    image: minio/minio:RELEASE.2024-08-03T04-33-23Z
+    container_name: textloom-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY:-minioadmin123}
+      - MINIO_BROWSER_REDIRECT_URL=${MINIO_BROWSER_REDIRECT_URL:-http://localhost:9001}
+      
+    volumes:
+      - minio-data:/data
+      
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+      
+    networks:
+      - backup-network
+      
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      
+    labels:
+      - "com.textloom.service=minio"
+      - "com.textloom.component=storage"
+
+  # PostgreSQL备份工具容器
+  postgres-backup:
+    image: postgres:15-alpine
+    container_name: textloom-postgres-backup
+    restart: "no"  # 按需运行
+    environment:
+      - PGUSER=${POSTGRES_USER:-postgres}
+      - PGPASSWORD=${POSTGRES_PASSWORD}
+      - PGDATABASE=${POSTGRES_DB:-textloom}
+      - PGHOST=postgres
+      - PGPORT=5432
+      
+    volumes:
+      - backup-data:/backups
+      - postgres-data:/var/lib/postgresql/data:ro
+      
+    networks:
+      - textloom-network
+      - backup-network
+      
+    entrypoint: ["tail", "-f", "/dev/null"]  # 保持容器运行
+    
+    labels:
+      - "com.textloom.service=postgres-backup"
+      - "com.textloom.component=backup"
+
+  # Redis备份工具容器
+  redis-backup:
+    image: redis:7-alpine
+    container_name: textloom-redis-backup
+    restart: "no"  # 按需运行
+    environment:
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      
+    volumes:
+      - backup-data:/backups
+      - redis-data:/var/lib/redis:ro
+      
+    networks:
+      - textloom-network
+      - backup-network
+      
+    entrypoint: ["tail", "-f", "/dev/null"]  # 保持容器运行
+    
+    labels:
+      - "com.textloom.service=redis-backup"
+      - "com.textloom.component=backup"
+
+volumes:
+  # 备份相关数据卷
+  backup-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${BACKUP_DATA_PATH:-./backups}
+      
+  backup-config:
+    driver: local
+    
+  backup-monitor-data:
+    driver: local
+    
+  backup-logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${BACKUP_LOGS_PATH:-./logs}
+      
+  # MinIO存储数据卷
+  minio-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${MINIO_DATA_PATH:-./minio_data}
+      
+  # 外部数据卷引用（需要在主应用中定义）
+  textloom-workspace:
+    external: true
+    
+  textloom-logs:
+    external: true
+    
+  postgres-data:
+    external: true
+    
+  redis-data:
+    external: true
+
+networks:
+  # 备份专用网络
+  backup-network:
+    driver: bridge
+    internal: false  # 允许外网访问以支持远程存储
+    labels:
+      - "com.textloom.network=backup"
+      
+  # 主应用网络（外部引用）
+  textloom-network:
+    external: true
+
+# 配置文件定义
+configs:
+  backup-policy:
+    file: ./config/backup_policy.json
+    
+  disaster-recovery-plan:
+    file: ./config/disaster_recovery_plan.json
+
+# 密钥管理
+secrets:
+  backup-encryption-key:
+    external: true
+    
+  minio-credentials:
+    external: true
+    
+  smtp-credentials:
+    external: true

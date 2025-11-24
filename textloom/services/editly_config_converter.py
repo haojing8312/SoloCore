@@ -63,6 +63,11 @@ class EditlyConfigConverter:
         self.logger.info(f"场景数: {len(script_data.get('scenes', []))}")
         self.logger.info(f"素材数: {len(media_files)}")
 
+        # 调试：输出第一个素材的详细信息
+        if media_files:
+            first_media = media_files[0]
+            self.logger.info(f"🔍 第一个素材详情: id={first_media.get('id')}, local_path={first_media.get('local_path')}, file_url={first_media.get('file_url')}")
+
         # 创建媒体文件映射
         media_map = {m.get("id"): m for m in media_files}
 
@@ -97,6 +102,7 @@ class EditlyConfigConverter:
             "width": getattr(settings, "video_default_width", 1080),
             "height": getattr(settings, "video_default_height", 1920),
             "fps": getattr(settings, "video_default_fps", 30),
+            "allowRemoteRequests": True,  # 允许加载远程URL资源
             "defaults": {
                 "duration": 4,
                 "transition": {
@@ -233,17 +239,18 @@ class EditlyConfigConverter:
         创建素材层（视频/图片）
 
         Args:
-            media: 媒体文件信息 {"id", "file_url", "filename"}
+            media: 媒体文件信息 {"id", "file_url", "local_path", "filename"}
             scene: 场景配置（可包含位置、大小信息）
 
         Returns:
             Layer 配置或 None
         """
-        file_url = media.get("file_url") or media.get("url")
+        # 优先使用本地路径，避免远程URL导致的视频编码问题
+        file_path = media.get("local_path") or media.get("file_url") or media.get("url")
         filename = media.get("filename", "")
 
-        if not file_url:
-            self.logger.warning(f"素材 {media.get('id')} 缺少 file_url")
+        if not file_path:
+            self.logger.warning(f"素材 {media.get('id')} 缺少 local_path 或 file_url")
             return None
 
         # 判断文件类型
@@ -261,7 +268,7 @@ class EditlyConfigConverter:
         # 构建层配置
         layer = {
             "type": "video" if is_video else "image",
-            "path": file_url,
+            "path": file_path,
             "resizeMode": getattr(settings, "video_resize_mode", "contain-blur"),
         }
 
@@ -321,10 +328,11 @@ class EditlyConfigConverter:
         self, media: Dict[str, str], component: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
         """从组件配置构建素材层"""
-        file_url = media.get("file_url") or media.get("url")
+        # 优先使用本地路径，避免远程URL导致的视频编码问题
+        file_path = media.get("local_path") or media.get("file_url") or media.get("url")
         filename = media.get("filename", "")
 
-        if not file_url:
+        if not file_path:
             return None
 
         is_video = any(
@@ -333,7 +341,7 @@ class EditlyConfigConverter:
 
         layer = {
             "type": "video" if is_video else "image",
-            "path": file_url,
+            "path": file_path,
             "resizeMode": "contain",
         }
 

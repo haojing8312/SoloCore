@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pycaps"
+version = "0.1.0"
+authors = [
+  { name="Franco Zanardi", email="francozanardi97@gmail.com" },
+]
+description = "A Python tool to edit videos and automatically add CSS-styled subtitles to videos."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT License"}
+keywords = ["video", "subtitles", "video editing", "whisper", "captions"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License", 
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+    "Topic :: Text Processing :: Linguistic",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+dependencies = [
+    "openai-whisper",
+    "playwright",
+    "Pillow",
+    "numpy",
+    "opencv-python",
+    "pydantic",
+    "typer",
+    "pywebview",
+    "requests",
+    "pydub>=0.25.1",
+    'audioop-lts; python_version >= "3.13"',
+    "multiprocess",
+    "tqdm"
+]
+
+[project.scripts]
+pycaps = "pycaps.cli:app"
+
+[project.urls]
+"Homepage" = "https://github.com/francozanardi/pycaps"
+"Repository" = "https://github.com/francozanardi/pycaps"
+"Bug Tracker" = "https://github.com/francozanardi/pycaps/issues"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]

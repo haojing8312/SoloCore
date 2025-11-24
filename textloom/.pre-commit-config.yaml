@@ -1,0 +1,186 @@
+# TextLoom Pre-commit 安全和质量检查配置
+# 在每次提交前自动运行代码质量和安全检查
+
+repos:
+  # 基础代码格式化和质量检查
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: ['--unsafe']
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ['--maxkb=10240']  # 10MB limit
+      - id: detect-private-key
+      - id: detect-aws-credentials
+      - id: check-case-conflict
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+
+  # Python 代码格式化
+  - repo: https://github.com/psf/black
+    rev: 23.9.1
+    hooks:
+      - id: black
+        language_version: python3.11
+        args: [--line-length=88]
+
+  # Import 排序
+  - repo: https://github.com/pycqa/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
+        args: [--profile=black, --line-length=88]
+
+  # 代码质量检查 (Flake8)
+  - repo: https://github.com/pycqa/flake8
+    rev: 6.1.0
+    hooks:
+      - id: flake8
+        args: [--max-line-length=88, --extend-ignore=E203,W503]
+        additional_dependencies:
+          - flake8-docstrings
+          - flake8-bugbear
+          - flake8-bandit
+
+  # 类型检查 (MyPy)
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.6.1
+    hooks:
+      - id: mypy
+        args: [--config-file=pyproject.toml]
+        additional_dependencies:
+          - types-requests
+          - types-redis
+          - types-setuptools
+        exclude: |
+          (?x)^(
+              tests/|
+              alembic/|
+              workspace/|
+              logs/
+          )
+
+  # 安全扫描 (Bandit)
+  - repo: https://github.com/pycqa/bandit
+    rev: 1.7.5
+    hooks:
+      - id: bandit
+        args: [-r, --format, json, --severity-level, medium]
+        exclude: |
+          (?x)^(
+              tests/|
+              test_|
+              conftest\.py$|
+              alembic/
+          )
+
+  # 依赖安全扫描 (Safety)
+  - repo: https://github.com/Lucas-C/pre-commit-hooks-safety
+    rev: v1.3.2
+    hooks:
+      - id: python-safety-dependencies-check
+        args: [--continue-on-error]
+        files: requirements.*\.txt$|pyproject\.toml$
+
+  # 密钥和敏感信息检测 (detect-secrets)
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: |
+          (?x)^(
+              \.secrets\.baseline$|
+              \.env\.example$|
+              tests/|
+              workspace/logs/|
+              security_reports/
+          )
+
+  # Dockerfile 检查 (如果有 Dockerfile)
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.0
+    hooks:
+      - id: hadolint-docker
+        args: [--ignore, DL3008, --ignore, DL3013]
+
+  # YAML 和配置文件格式化
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v3.0.3
+    hooks:
+      - id: prettier
+        types_or: [yaml, markdown, json]
+        exclude: |
+          (?x)^(
+              \.github/workflows/.*\.yml$|
+              alembic\.ini$
+          )
+
+  # 自定义安全检查脚本
+  - repo: local
+    hooks:
+      - id: custom-security-check
+        name: TextLoom 自定义安全检查
+        entry: bash -c 'if [ -f scripts/security_automation.sh ]; then chmod +x scripts/security_automation.sh && ./scripts/security_automation.sh quick-scan --severity high --output console; else echo "安全检查脚本不存在，跳过"; fi'
+        language: system
+        types: [python]
+        pass_filenames: false
+        stages: [commit]
+        verbose: true
+
+      - id: dependency-check
+        name: 依赖更新检查
+        entry: bash -c 'if [ -f scripts/dependency_updater.py ]; then timeout 60 uv run python scripts/dependency_updater.py --priority critical --output console || echo "依赖检查超时或失败"; else echo "依赖检查脚本不存在，跳过"; fi'
+        language: system
+        files: ^(pyproject\.toml|requirements.*\.txt)$
+        pass_filenames: false
+        stages: [commit]
+        verbose: true
+
+      - id: env-file-check
+        name: 环境文件安全检查
+        entry: bash -c 'for f in .env .env.local .env.production; do if [ -f "$f" ]; then echo "警告: 发现环境文件 $f，确保不包含敏感信息"; grep -n "PASSWORD\|SECRET\|KEY\|TOKEN" "$f" || true; fi; done'
+        language: system
+        files: '^\.env'
+        pass_filenames: false
+        stages: [commit]
+        verbose: true
+
+      - id: large-file-check
+        name: 大文件检查
+        entry: bash -c 'find . -type f -size +5M -not -path "./.git/*" -not -path "./workspace/*" -not -path "./logs/*" -not -path "./.venv/*" -not -path "./venv/*" | while read file; do echo "警告: 发现大文件 $file ($(du -h "$file" | cut -f1))"; done'
+        language: system
+        pass_filenames: false
+        stages: [commit]
+        verbose: true
+
+# CI/CD 特殊配置
+ci:
+  autofix_commit_msg: |
+    [pre-commit.ci] auto fixes from pre-commit hooks
+
+    for more information, see https://pre-commit.ci
+  autofix_prs: true
+  autoupdate_branch: ''
+  autoupdate_commit_msg: '[pre-commit.ci] pre-commit autoupdate'
+  autoupdate_schedule: weekly
+  skip: [mypy, custom-security-check, dependency-check]
+  submodules: false
+
+# 默认安装语言版本
+default_language_version:
+  python: python3.11
+
+# 默认阶段
+default_stages: [commit]
+
+# 失败时不继续
+fail_fast: false
+
+# 最小 pre-commit 版本
+minimum_pre_commit_version: "3.0.0"

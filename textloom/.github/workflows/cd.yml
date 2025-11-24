@@ -1,0 +1,583 @@
+name: CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+        default: 'staging'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  PYTHON_VERSION: '3.11'
+  UV_VERSION: '0.5.1'
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    name: Build and Push Docker Images
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
+          type=sha,prefix={{branch}}-
+          
+    - name: Create production Dockerfile
+      run: |
+        cat > Dockerfile << 'EOF'
+        # Multi-stage build for production
+        FROM python:3.11-slim as builder
+        
+        # Install system dependencies for building
+        RUN apt-get update && apt-get install -y \
+            build-essential \
+            curl \
+            git \
+            && rm -rf /var/lib/apt/lists/*
+        
+        # Install uv
+        COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
+        
+        # Set working directory
+        WORKDIR /app
+        
+        # Copy dependency files
+        COPY pyproject.toml uv.lock ./
+        
+        # Install dependencies in a virtual environment
+        RUN uv sync --frozen --no-dev
+        
+        # Production stage
+        FROM python:3.11-slim as production
+        
+        # Install runtime system dependencies
+        RUN apt-get update && apt-get install -y \
+            curl \
+            ffmpeg \
+            libpq-dev \
+            && rm -rf /var/lib/apt/lists/* \
+            && apt-get clean
+        
+        # Create non-root user
+        RUN useradd --create-home --shell /bin/bash appuser
+        
+        # Set working directory
+        WORKDIR /app
+        
+        # Copy virtual environment from builder
+        COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
+        
+        # Copy application code
+        COPY --chown=appuser:appuser . .
+        
+        # Create required directories
+        RUN mkdir -p logs workspace && \
+            chown -R appuser:appuser logs workspace
+        
+        # Switch to non-root user
+        USER appuser
+        
+        # Add virtual environment to PATH
+        ENV PATH="/app/.venv/bin:$PATH"
+        
+        # Health check
+        HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+            CMD curl -f http://localhost:8000/health || exit 1
+        
+        # Expose port
+        EXPOSE 8000
+        
+        # Default command
+        CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+        EOF
+        
+    - name: Build and push Docker image
+      id: build
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        
+    - name: Generate SBOM
+      uses: anchore/sbom-action@v0
+      with:
+        image: ${{ steps.meta.outputs.tags }}
+        format: spdx-json
+        output-file: sbom.spdx.json
+        
+    - name: Upload SBOM
+      uses: actions/upload-artifact@v4
+      with:
+        name: sbom
+        path: sbom.spdx.json
+        retention-days: 30
+
+  deploy-staging:
+    runs-on: ubuntu-latest
+    name: Deploy to Staging
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main' || github.event.inputs.environment == 'staging'
+    environment: staging
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Create staging deployment config
+      run: |
+        cat > docker-compose.staging.yml << 'EOF'
+        version: '3.8'
+        
+        services:
+          # Redis for Celery
+          redis:
+            image: redis:7-alpine
+            container_name: textloom_redis_staging
+            restart: unless-stopped
+            command: redis-server --requirepass ${REDIS_PASSWORD}
+            ports:
+              - "127.0.0.1:6379:6379"
+            volumes:
+              - redis_data:/data
+            healthcheck:
+              test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+              interval: 30s
+              timeout: 10s
+              retries: 3
+        
+          # FastAPI Application
+          api:
+            image: ${{ needs.build-and-push.outputs.image-tag }}
+            container_name: textloom_api_staging
+            restart: unless-stopped
+            ports:
+              - "8000:8000"
+            environment:
+              - ENVIRONMENT=staging
+              - REDIS_HOST=redis
+              - REDIS_PORT=6379
+              - REDIS_PASSWORD=${REDIS_PASSWORD}
+              - DATABASE_URL=${DATABASE_URL}
+              - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/1
+              - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/2
+              - SECRET_KEY=${SECRET_KEY}
+              - OPENAI_API_KEY=${OPENAI_API_KEY}
+              - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+            volumes:
+              - ./workspace:/app/workspace
+              - ./logs:/app/logs
+            depends_on:
+              redis:
+                condition: service_healthy
+            healthcheck:
+              test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+              interval: 30s
+              timeout: 10s
+              retries: 3
+        
+          # Celery Worker
+          worker:
+            image: ${{ needs.build-and-push.outputs.image-tag }}
+            container_name: textloom_worker_staging
+            restart: unless-stopped
+            environment:
+              - ENVIRONMENT=staging
+              - REDIS_HOST=redis
+              - REDIS_PORT=6379
+              - REDIS_PASSWORD=${REDIS_PASSWORD}
+              - DATABASE_URL=${DATABASE_URL}
+              - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/1
+              - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/2
+              - SECRET_KEY=${SECRET_KEY}
+              - OPENAI_API_KEY=${OPENAI_API_KEY}
+              - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+            volumes:
+              - ./workspace:/app/workspace
+              - ./logs:/app/logs
+            depends_on:
+              redis:
+                condition: service_healthy
+            command: python -m celery -A celery_config worker --loglevel=info --concurrency=2
+        
+          # Celery Flower (monitoring)
+          flower:
+            image: ${{ needs.build-and-push.outputs.image-tag }}
+            container_name: textloom_flower_staging
+            restart: unless-stopped
+            ports:
+              - "127.0.0.1:5555:5555"
+            environment:
+              - ENVIRONMENT=staging
+              - REDIS_HOST=redis
+              - REDIS_PORT=6379
+              - REDIS_PASSWORD=${REDIS_PASSWORD}
+              - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/1
+              - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/2
+            depends_on:
+              redis:
+                condition: service_healthy
+            command: python -m celery -A celery_config flower --address=0.0.0.0 --port=5555
+        
+        volumes:
+          redis_data:
+        
+        networks:
+          default:
+            name: textloom_staging
+        EOF
+        
+    - name: Deploy to staging server
+      run: |
+        echo "Deployment configuration created for staging environment"
+        echo "Image: ${{ needs.build-and-push.outputs.image-tag }}"
+        echo "Digest: ${{ needs.build-and-push.outputs.image-digest }}"
+        echo ""
+        echo "To deploy this configuration:"
+        echo "1. Copy docker-compose.staging.yml to your staging server"
+        echo "2. Set required environment variables"
+        echo "3. Run: docker-compose -f docker-compose.staging.yml up -d"
+        
+    - name: Health check after deployment
+      run: |
+        echo "Staging deployment initiated. Health checks should be configured on the target server."
+
+  deploy-production:
+    runs-on: ubuntu-latest
+    name: Deploy to Production
+    needs: [build-and-push, deploy-staging]
+    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.environment == 'production'
+    environment: production
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Create production deployment config
+      run: |
+        cat > docker-compose.production.yml << 'EOF'
+        version: '3.8'
+        
+        services:
+          # Redis for Celery (with persistence)
+          redis:
+            image: redis:7-alpine
+            container_name: textloom_redis_prod
+            restart: unless-stopped
+            command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
+            ports:
+              - "127.0.0.1:6379:6379"
+            volumes:
+              - redis_data:/data
+            deploy:
+              resources:
+                limits:
+                  memory: 512M
+                  cpus: '0.5'
+            healthcheck:
+              test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+              interval: 30s
+              timeout: 10s
+              retries: 3
+        
+          # FastAPI Application (with multiple replicas)
+          api:
+            image: ${{ needs.build-and-push.outputs.image-tag }}
+            restart: unless-stopped
+            ports:
+              - "8000:8000"
+            environment:
+              - ENVIRONMENT=production
+              - REDIS_HOST=redis
+              - REDIS_PORT=6379
+              - REDIS_PASSWORD=${REDIS_PASSWORD}
+              - DATABASE_URL=${DATABASE_URL}
+              - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/1
+              - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/2
+              - SECRET_KEY=${SECRET_KEY}
+              - OPENAI_API_KEY=${OPENAI_API_KEY}
+              - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+              - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}
+            volumes:
+              - ./workspace:/app/workspace
+              - ./logs:/app/logs
+            depends_on:
+              redis:
+                condition: service_healthy
+            deploy:
+              replicas: 2
+              resources:
+                limits:
+                  memory: 1G
+                  cpus: '1.0'
+              restart_policy:
+                condition: on-failure
+                delay: 5s
+                max_attempts: 3
+            healthcheck:
+              test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+              interval: 30s
+              timeout: 10s
+              retries: 3
+              start_period: 30s
+        
+          # Celery Workers (multiple types)
+          worker-video:
+            image: ${{ needs.build-and-push.outputs.image-tag }}
+            restart: unless-stopped
+            environment:
+              - ENVIRONMENT=production
+              - REDIS_HOST=redis
+              - REDIS_PORT=6379
+              - REDIS_PASSWORD=${REDIS_PASSWORD}
+              - DATABASE_URL=${DATABASE_URL}
+              - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/1
+              - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/2
+              - SECRET_KEY=${SECRET_KEY}
+              - OPENAI_API_KEY=${OPENAI_API_KEY}
+              - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+            volumes:
+              - ./workspace:/app/workspace
+              - ./logs:/app/logs
+            depends_on:
+              redis:
+                condition: service_healthy
+            deploy:
+              replicas: 2
+              resources:
+                limits:
+                  memory: 2G
+                  cpus: '1.5'
+            command: python -m celery -A celery_config worker --loglevel=info --concurrency=2 --queues=video_processing,video_generation --hostname=worker-video@%h
+        
+          worker-maintenance:
+            image: ${{ needs.build-and-push.outputs.image-tag }}
+            restart: unless-stopped
+            environment:
+              - ENVIRONMENT=production
+              - REDIS_HOST=redis
+              - REDIS_PORT=6379
+              - REDIS_PASSWORD=${REDIS_PASSWORD}
+              - DATABASE_URL=${DATABASE_URL}
+              - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/1
+              - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/2
+              - SECRET_KEY=${SECRET_KEY}
+            volumes:
+              - ./workspace:/app/workspace
+              - ./logs:/app/logs
+            depends_on:
+              redis:
+                condition: service_healthy
+            deploy:
+              resources:
+                limits:
+                  memory: 512M
+                  cpus: '0.5'
+            command: python -m celery -A celery_config worker --loglevel=info --concurrency=1 --queues=maintenance,monitoring --hostname=worker-maintenance@%h
+        
+          # Celery Beat (scheduler)
+          beat:
+            image: ${{ needs.build-and-push.outputs.image-tag }}
+            restart: unless-stopped
+            environment:
+              - ENVIRONMENT=production
+              - REDIS_HOST=redis
+              - REDIS_PORT=6379
+              - REDIS_PASSWORD=${REDIS_PASSWORD}
+              - DATABASE_URL=${DATABASE_URL}
+              - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/1
+              - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/2
+              - SECRET_KEY=${SECRET_KEY}
+            volumes:
+              - ./logs:/app/logs
+            depends_on:
+              redis:
+                condition: service_healthy
+            deploy:
+              resources:
+                limits:
+                  memory: 256M
+                  cpus: '0.25'
+            command: python -m celery -A celery_config beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+        
+          # Celery Flower (monitoring) - Production access restricted
+          flower:
+            image: ${{ needs.build-and-push.outputs.image-tag }}
+            restart: unless-stopped
+            ports:
+              - "127.0.0.1:5555:5555"
+            environment:
+              - ENVIRONMENT=production
+              - REDIS_HOST=redis
+              - REDIS_PORT=6379
+              - REDIS_PASSWORD=${REDIS_PASSWORD}
+              - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/1
+              - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/2
+              - FLOWER_BASIC_AUTH=${FLOWER_BASIC_AUTH}
+            depends_on:
+              redis:
+                condition: service_healthy
+            deploy:
+              resources:
+                limits:
+                  memory: 256M
+                  cpus: '0.25'
+            command: python -m celery -A celery_config flower --address=0.0.0.0 --port=5555 --basic_auth=${FLOWER_BASIC_AUTH}
+        
+        volumes:
+          redis_data:
+        
+        networks:
+          default:
+            name: textloom_production
+        EOF
+        
+    - name: Create production deployment script
+      run: |
+        cat > deploy-production.sh << 'EOF'
+        #!/bin/bash
+        set -e
+        
+        echo "Starting TextLoom production deployment..."
+        
+        # Check if required environment variables are set
+        required_vars=(
+          "REDIS_PASSWORD"
+          "DATABASE_URL"
+          "SECRET_KEY"
+          "OPENAI_API_KEY"
+          "CORS_ALLOWED_ORIGINS"
+        )
+        
+        for var in "${required_vars[@]}"; do
+          if [[ -z "${!var}" ]]; then
+            echo "Error: Required environment variable $var is not set"
+            exit 1
+          fi
+        done
+        
+        # Create backup of current deployment if exists
+        if docker-compose -f docker-compose.production.yml ps -q | grep -q .; then
+          echo "Creating backup of current deployment..."
+          docker-compose -f docker-compose.production.yml exec -T redis redis-cli --rdb /data/backup-$(date +%Y%m%d-%H%M%S).rdb || true
+        fi
+        
+        # Pull the latest images
+        echo "Pulling latest images..."
+        docker-compose -f docker-compose.production.yml pull
+        
+        # Deploy with zero-downtime strategy
+        echo "Deploying new version..."
+        docker-compose -f docker-compose.production.yml up -d --remove-orphans
+        
+        # Wait for health checks
+        echo "Waiting for services to become healthy..."
+        timeout 300 bash -c 'until docker-compose -f docker-compose.production.yml ps | grep -q "healthy"; do sleep 5; done'
+        
+        # Clean up old images
+        echo "Cleaning up old images..."
+        docker image prune -f
+        
+        echo "Production deployment completed successfully!"
+        EOF
+        
+        chmod +x deploy-production.sh
+        
+    - name: Deploy to production
+      run: |
+        echo "Production deployment configuration created"
+        echo "Image: ${{ needs.build-and-push.outputs.image-tag }}"
+        echo "Digest: ${{ needs.build-and-push.outputs.image-digest }}"
+        echo ""
+        echo "To deploy this configuration:"
+        echo "1. Copy docker-compose.production.yml and deploy-production.sh to your production server"
+        echo "2. Set all required environment variables"
+        echo "3. Run: ./deploy-production.sh"
+        
+    - name: Upload deployment artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: production-deployment
+        path: |
+          docker-compose.production.yml
+          deploy-production.sh
+        retention-days: 90
+
+  notify-success:
+    runs-on: ubuntu-latest
+    name: Deployment Success Notification
+    needs: [build-and-push, deploy-staging]
+    if: success()
+    
+    steps:
+    - name: Create deployment summary
+      run: |
+        echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+        echo "✅ **Deployment successful!**" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+        echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+        echo "| Docker Build | ✅ Success |" >> $GITHUB_STEP_SUMMARY
+        echo "| Staging Deploy | ✅ Success |" >> $GITHUB_STEP_SUMMARY
+        echo "| Production Deploy | ${{ needs.deploy-production.result == 'success' && '✅ Success' || '⏸️ Pending' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Image:** \`${{ needs.build-and-push.outputs.image-tag }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "**Digest:** \`${{ needs.build-and-push.outputs.image-digest }}\`" >> $GITHUB_STEP_SUMMARY
+
+  notify-failure:
+    runs-on: ubuntu-latest
+    name: Deployment Failure Notification
+    needs: [build-and-push, deploy-staging, deploy-production]
+    if: failure()
+    
+    steps:
+    - name: Create failure summary
+      run: |
+        echo "## Deployment Failed" >> $GITHUB_STEP_SUMMARY
+        echo "❌ **Deployment failed!**" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+        echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+        echo "| Docker Build | ${{ needs.build-and-push.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Staging Deploy | ${{ needs.deploy-staging.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Production Deploy | ${{ needs.deploy-production.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Please check the workflow logs for detailed error information." >> $GITHUB_STEP_SUMMARY

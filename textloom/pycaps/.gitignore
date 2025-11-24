@@ -1,0 +1,16 @@
+__pycache__
+*.mp4
+.env
+.vscode
+ideas.md
+*.png
+examples/*.json
+*.egg-info/
+tools
+examples
+dumper.py
+*.txt
+demo
+TODO.md
+research
+.secrets

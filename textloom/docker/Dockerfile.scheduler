@@ -1,0 +1,73 @@
+# Multi-stage build for TextLoom Scheduler
+ARG PYTHON_VERSION=3.11
+FROM python:${PYTHON_VERSION}-slim as builder
+
+# Build arguments
+ARG BUILD_DATE
+ARG VCS_REF
+LABEL org.opencontainers.image.created="${BUILD_DATE}"
+LABEL org.opencontainers.image.revision="${VCS_REF}"
+LABEL org.opencontainers.image.title="TextLoom Scheduler"
+LABEL org.opencontainers.image.description="TextLoom Celery Beat scheduler"
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install UV package manager
+RUN pip install uv
+
+# Set working directory
+WORKDIR /app
+
+# Copy dependency files
+COPY pyproject.toml uv.lock ./
+
+# Install Python dependencies
+RUN uv sync --frozen --no-dev
+
+# Production stage
+FROM python:${PYTHON_VERSION}-slim as production
+
+# Install runtime dependencies only
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Create non-root user
+RUN groupadd --gid 1000 textloom \
+    && useradd --uid 1000 --gid textloom --shell /bin/bash --create-home textloom
+
+# Set working directory
+WORKDIR /app
+
+# Copy virtual environment from builder
+COPY --from=builder /app/.venv /app/.venv
+
+# Make sure we use the venv
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Copy application code (minimal set for scheduler)
+COPY --chown=textloom:textloom celery_config.py ./
+COPY --chown=textloom:textloom config.py ./
+COPY --chown=textloom:textloom models/ ./models/
+COPY --chown=textloom:textloom utils/ ./utils/
+
+# Create necessary directories
+RUN mkdir -p /app/logs \
+    && chown -R textloom:textloom /app
+
+# Switch to non-root user
+USER textloom
+
+# Health check for scheduler
+HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
+    CMD pgrep -f "celery.*beat" || exit 1
+
+# Default command
+CMD ["celery", "-A", "celery_config", "beat", "--loglevel=info", "--pidfile=/tmp/celerybeat.pid"]

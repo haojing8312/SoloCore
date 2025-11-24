@@ -1,0 +1,88 @@
+# Multi-stage build for TextLoom Worker
+ARG PYTHON_VERSION=3.11
+FROM python:${PYTHON_VERSION}-slim as builder
+
+# Build arguments
+ARG BUILD_DATE
+ARG VCS_REF
+LABEL org.opencontainers.image.created="${BUILD_DATE}"
+LABEL org.opencontainers.image.revision="${VCS_REF}"
+LABEL org.opencontainers.image.title="TextLoom Worker"
+LABEL org.opencontainers.image.description="TextLoom Celery worker for background processing"
+
+# Install system dependencies including video processing tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    libpq-dev \
+    libmagic1 \
+    ffmpeg \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install UV package manager
+RUN pip install uv
+
+# Set working directory
+WORKDIR /app
+
+# Copy dependency files
+COPY pyproject.toml uv.lock ./
+
+# Install Python dependencies
+RUN uv sync --frozen --no-dev
+
+# Production stage
+FROM python:${PYTHON_VERSION}-slim as production
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    libmagic1 \
+    curl \
+    ffmpeg \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
+    libglib2.0-0 \
+    fonts-dejavu-core \
+    fonts-liberation \
+    fontconfig \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Update font cache
+RUN fc-cache -fv
+
+# Create non-root user
+RUN groupadd --gid 1000 textloom \
+    && useradd --uid 1000 --gid textloom --shell /bin/bash --create-home textloom
+
+# Set working directory
+WORKDIR /app
+
+# Copy virtual environment from builder
+COPY --from=builder /app/.venv /app/.venv
+
+# Make sure we use the venv
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Copy application code
+COPY --chown=textloom:textloom . .
+
+# Create necessary directories with proper permissions
+RUN mkdir -p /app/logs /app/workspace /app/.cache \
+    && chown -R textloom:textloom /app
+
+# Switch to non-root user
+USER textloom
+
+# Health check for worker
+HEALTHCHECK --interval=60s --timeout=30s --start-period=120s --retries=3 \
+    CMD celery -A celery_config inspect ping || exit 1
+
+# Default command
+CMD ["celery", "-A", "celery_config", "worker", "--loglevel=info", "--concurrency=4"]

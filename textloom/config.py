@@ -71,15 +71,7 @@ class Settings(BaseSettings):
     openai_model_name: str = "Qwen/Qwen2.5-VL-72B-Instruct"
     script_model_name: str = "deepseek-chat"
 
-    # Google AI Studio Gemini 配置
-    use_gemini: bool = True
-    gemini_api_key: Optional[str] = None
-    gemini_api_base: Optional[str] = None
-    gemini_model_name: str = "gemini-2.5-pro"
-    gemini_script_model_name: str = "gemini-2.5-pro"
-
     # 图片分析配置
-    image_analysis_use_gemini: bool = False
     image_analysis_model_name: str = "Qwen/Qwen2.5-VL-72B-Instruct"
 
     # Editly 视频引擎配置
@@ -223,16 +215,15 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        extra = "ignore"  # 忽略.env中未定义的额外配置项
 
     def get_current_model_name(self) -> str:
         """获取当前应该使用的主模型名称"""
-        return self.gemini_model_name if self.use_gemini else self.openai_model_name
+        return self.openai_model_name
 
     def get_current_script_model_name(self) -> str:
         """获取当前应该使用的脚本生成模型名称"""
-        return (
-            self.gemini_script_model_name if self.use_gemini else self.script_model_name
-        )
+        return self.script_model_name
 
     def get_allowed_origins(self) -> List[str]:
         """

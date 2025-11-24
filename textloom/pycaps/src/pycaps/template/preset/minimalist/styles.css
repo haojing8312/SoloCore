@@ -1,0 +1,26 @@
+.word {
+    font-family: 'Helvetica Neue', 'Arial', sans-serif;
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.7);
+    background-color: rgba(0, 0, 0, 0.6);
+    padding: 4px 5px;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+}
+
+.word-being-narrated {
+    color: #FFFFFF;
+}
+
+.word-already-narrated {
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.first-word-in-line {
+    border-top-left-radius: 4px;
+    border-bottom-left-radius: 4px;
+}
+
+.last-word-in-line {
+    border-top-right-radius: 4px;
+    border-bottom-right-radius: 4px;
+}

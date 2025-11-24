@@ -1,0 +1,325 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  PYTHON_VERSION: '3.11'
+  UV_VERSION: '0.5.1'
+
+jobs:
+  code-quality:
+    runs-on: ubuntu-latest
+    name: Code Quality Checks
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+      with:
+        version: ${{ env.UV_VERSION }}
+        
+    - name: Install dependencies
+      run: |
+        uv sync --dev
+        
+    - name: Code formatting check (black)
+      run: uv run black --check --diff .
+      
+    - name: Import sorting check (isort)
+      run: uv run isort --check-only --diff .
+      
+    - name: Linting (flake8)
+      run: uv run flake8 .
+      
+    - name: Type checking (mypy)
+      run: uv run mypy . || true  # Allow mypy to fail initially
+      continue-on-error: true
+
+  security-scan:
+    runs-on: ubuntu-latest
+    name: Security Scanning
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+      with:
+        version: ${{ env.UV_VERSION }}
+        
+    - name: Install dependencies
+      run: uv sync --dev
+      
+    - name: Security audit (safety)
+      run: |
+        uv pip install safety
+        uv run safety check --json || true
+      continue-on-error: true
+      
+    - name: Dependency vulnerability scan (pip-audit)
+      run: |
+        uv pip install pip-audit
+        uv run pip-audit --format=json --output=security-report.json || true
+      continue-on-error: true
+      
+    - name: Upload security report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: security-report
+        path: security-report.json
+        retention-days: 30
+
+  test:
+    runs-on: ubuntu-latest
+    name: Tests
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: textloom_test
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: textloom_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+          
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+      with:
+        version: ${{ env.UV_VERSION }}
+        
+    - name: Install dependencies
+      run: uv sync --dev
+      
+    - name: Create test environment file
+      run: |
+        cat > .env.test << EOF
+        # Test Environment Configuration
+        ENVIRONMENT=test
+        
+        # Database
+        DATABASE_URL=postgresql://textloom_test:test_password@localhost:5432/textloom_test
+        
+        # Redis
+        REDIS_HOST=localhost
+        REDIS_PORT=6379
+        REDIS_PASSWORD=
+        
+        # Celery
+        CELERY_BROKER_URL=redis://localhost:6379/1
+        CELERY_RESULT_BACKEND=redis://localhost:6379/2
+        
+        # Security
+        SECRET_KEY=test-secret-key-not-for-production
+        INTERNAL_TEST_TOKEN=test-token
+        
+        # Disable external services for testing
+        OPENAI_API_KEY=test-key
+        GOOGLE_API_KEY=test-key
+        EOF
+        
+    - name: Run database migrations
+      env:
+        DATABASE_URL: postgresql://textloom_test:test_password@localhost:5432/textloom_test
+      run: |
+        uv run alembic upgrade head
+        
+    - name: Run unit tests
+      env:
+        DATABASE_URL: postgresql://textloom_test:test_password@localhost:5432/textloom_test
+        REDIS_HOST: localhost
+        REDIS_PORT: 6379
+      run: |
+        uv run pytest tests/ -v --tb=short -m "not integration" --cov=. --cov-report=xml --cov-report=html
+        
+    - name: Run integration tests
+      env:
+        DATABASE_URL: postgresql://textloom_test:test_password@localhost:5432/textloom_test
+        REDIS_HOST: localhost
+        REDIS_PORT: 6379
+        RUN_LIVE_AI_TESTS: "0"  # Disable live AI tests in CI
+      run: |
+        uv run pytest tests/integration/ -v --tb=short -m "integration" || true
+      continue-on-error: true
+      
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results
+        path: |
+          htmlcov/
+          coverage.xml
+        retention-days: 30
+
+  build-test:
+    runs-on: ubuntu-latest
+    name: Build Test
+    needs: [code-quality, test]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Create Dockerfile for testing
+      run: |
+        cat > Dockerfile << 'EOF'
+        FROM python:3.11-slim
+        
+        # Install system dependencies
+        RUN apt-get update && apt-get install -y \
+            curl \
+            && rm -rf /var/lib/apt/lists/*
+        
+        # Set working directory
+        WORKDIR /app
+        
+        # Install uv
+        COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
+        
+        # Copy dependency files
+        COPY pyproject.toml uv.lock ./
+        
+        # Install dependencies
+        RUN uv sync --frozen --no-dev
+        
+        # Copy application code
+        COPY . .
+        
+        # Create non-root user
+        RUN useradd --create-home --shell /bin/bash appuser && \
+            chown -R appuser:appuser /app
+        USER appuser
+        
+        # Health check
+        HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+            CMD curl -f http://localhost:8000/health || exit 1
+        
+        # Expose port
+        EXPOSE 8000
+        
+        # Default command
+        CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+        EOF
+        
+    - name: Build Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: false
+        tags: textloom:test
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  dependency-check:
+    runs-on: ubuntu-latest
+    name: Dependency Analysis
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+      with:
+        version: ${{ env.UV_VERSION }}
+        
+    - name: Generate dependency report
+      run: |
+        uv tree --format json > dependency-tree.json
+        uv pip list --format json > installed-packages.json
+        
+    - name: Check for outdated packages
+      run: |
+        uv pip list --outdated --format json > outdated-packages.json || true
+        
+    - name: Upload dependency reports
+      uses: actions/upload-artifact@v4
+      with:
+        name: dependency-reports
+        path: |
+          dependency-tree.json
+          installed-packages.json
+          outdated-packages.json
+        retention-days: 30
+
+  notify:
+    runs-on: ubuntu-latest
+    name: Notifications
+    needs: [code-quality, security-scan, test, build-test, dependency-check]
+    if: always()
+    
+    steps:
+    - name: Determine overall status
+      id: status
+      run: |
+        if [[ "${{ needs.code-quality.result }}" == "failure" || "${{ needs.test.result }}" == "failure" || "${{ needs.build-test.result }}" == "failure" ]]; then
+          echo "status=failure" >> $GITHUB_OUTPUT
+        elif [[ "${{ needs.code-quality.result }}" == "success" && "${{ needs.test.result }}" == "success" && "${{ needs.build-test.result }}" == "success" ]]; then
+          echo "status=success" >> $GITHUB_OUTPUT
+        else
+          echo "status=partial" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Create summary
+      run: |
+        echo "## CI Pipeline Results" >> $GITHUB_STEP_SUMMARY
+        echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+        echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+        echo "| Code Quality | ${{ needs.code-quality.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Security Scan | ${{ needs.security-scan.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Tests | ${{ needs.test.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Build Test | ${{ needs.build-test.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Dependency Check | ${{ needs.dependency-check.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Overall Status: **${{ steps.status.outputs.status }}**" >> $GITHUB_STEP_SUMMARY

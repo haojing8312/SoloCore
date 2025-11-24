@@ -1,0 +1,32 @@
+@font-face {
+    font-family: 'CustomFont';
+    src: url('black.ttf') format('truetype');
+}
+
+.word {
+    font-family: CustomFont, sans-serif;
+    font-size: 20px;
+    color: white;
+    padding: 4px 4px;
+    text-shadow: 
+        -2px -2px 2px #000,  
+         2px -2px 2px #000,
+        -2px  2px 2px #000,
+         2px  2px 2px #000;
+    text-transform: uppercase;
+}
+
+.line-being-narrated > .word {
+    background-color: blue;
+    font-size: 30px;
+}
+
+.line-being-narrated > .first-word-in-line {
+    border-top-left-radius: 5%;
+    border-bottom-left-radius: 5%;
+}
+
+.line-being-narrated > .last-word-in-line {
+    border-top-right-radius: 5%;
+    border-bottom-right-radius: 5%;
+}

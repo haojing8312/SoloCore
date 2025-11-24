@@ -1,0 +1,186 @@
+version: '3.8'
+
+# 优化后的Docker Compose配置
+# 包含数据库连接池优化和资源限制
+
+services:
+  # FastAPI API服务
+  fastapi:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: textloom_api
+    ports:
+      - "48095:48095"
+    environment:
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - DATABASE_URL=${DATABASE_URL}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+      # 数据库连接池配置
+      - DATABASE_POOL_SIZE=8
+      - DATABASE_MAX_OVERFLOW=4
+      - DATABASE_POOL_RECYCLE=1800
+      - DATABASE_POOL_TIMEOUT=30
+      - DATABASE_POOL_PRE_PING=true
+    volumes:
+      - ./workspace:/app/workspace
+      - ./logs:/app/logs
+      - ./config.py:/app/config.py
+    command: uvicorn main:app --host 0.0.0.0 --port 48095
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:48095/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+
+  # Celery Worker - 视频处理
+  celery-worker-video:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: textloom_worker_video
+    environment:
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - DATABASE_URL=${DATABASE_URL}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+      - CELERY_WORKER_CONCURRENCY=2
+      # Celery专用数据库连接池配置
+      - CELERY_DATABASE_POOL_SIZE=6
+      - CELERY_DATABASE_MAX_OVERFLOW=2
+      - CELERY_DATABASE_MIN_CONNECTIONS=2
+    volumes:
+      - ./workspace:/app/workspace
+      - ./logs:/app/logs
+      - ./config.py:/app/config.py
+    command: celery -A celery_config worker --loglevel=info --concurrency=2 --queues=video_processing,video_generation --hostname=worker-video@%h --max-memory-per-child=200000
+    healthcheck:
+      test: ["CMD", "celery", "-A", "celery_config", "inspect", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2.0'
+        reservations:
+          memory: 1G
+          cpus: '1.0'
+
+  # Celery Worker - 维护任务
+  celery-worker-maintenance:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: textloom_worker_maintenance
+    environment:
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - DATABASE_URL=${DATABASE_URL}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+      - CELERY_WORKER_CONCURRENCY=1
+      # Celery专用数据库连接池配置
+      - CELERY_DATABASE_POOL_SIZE=4
+      - CELERY_DATABASE_MAX_OVERFLOW=2
+      - CELERY_DATABASE_MIN_CONNECTIONS=1
+    volumes:
+      - ./workspace:/app/workspace
+      - ./logs:/app/logs
+      - ./config.py:/app/config.py
+    command: celery -A celery_config worker --loglevel=info --concurrency=1 --queues=maintenance,monitoring --hostname=worker-maintenance@%h --max-memory-per-child=100000
+    restart: unless-stopped
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+
+  # Celery Flower - 监控界面
+  celery-flower:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: textloom_flower
+    ports:
+      - "127.0.0.1:5555:5555"
+    environment:
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+    command: celery -A celery_config flower --address=127.0.0.1 --port=5555 --logging=info --enable_events
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5555"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+        reservations:
+          memory: 128M
+          cpus: '0.1'
+
+  # Celery Beat - 定时任务调度器
+  celery-beat:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: textloom_beat
+    environment:
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - DATABASE_URL=${DATABASE_URL}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+    volumes:
+      - ./logs:/app/logs
+    command: celery -A celery_config beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+    restart: unless-stopped
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+        reservations:
+          memory: 128M
+          cpus: '0.1'
+
+networks:
+  default:
+    name: textloom_network
+    driver: bridge

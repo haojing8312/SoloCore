@@ -1,0 +1,64 @@
+[flake8]
+# Configuration for flake8 linting
+max-line-length = 88
+extend-ignore = 
+    # E203: whitespace before ':' (conflicts with black)
+    E203,
+    # W503: line break before binary operator (conflicts with black)
+    W503,
+    # E501: line too long (handled by black)
+    E501,
+    # F401: imported but unused (handled by mypy/IDE)
+    F401
+
+exclude = 
+    .git,
+    __pycache__,
+    .venv,
+    .env,
+    venv,
+    env,
+    build,
+    dist,
+    .tox,
+    .mypy_cache,
+    .pytest_cache,
+    migrations,
+    alembic/versions,
+    workspace,
+    logs
+
+# Per-file ignores
+per-file-ignores =
+    # Allow unused imports in __init__.py files
+    __init__.py:F401,F403
+    # Allow star imports in config files
+    config.py:F403,F405
+    # Allow long lines in migration files
+    alembic/versions/*.py:E501
+    # Allow print statements in scripts
+    scripts/*.py:T201
+
+# Enable specific warnings
+select = E,W,F,C,N,B
+
+# Maximum cyclomatic complexity
+max-complexity = 15
+
+# Import order checking
+import-order-style = google
+application-import-names = models,routers,services,utils,tasks,processors
+
+# Docstring conventions
+docstring-convention = google
+
+# Enable additional plugins
+# B: flake8-bugbear
+# N: pep8-naming  
+# C: flake8-comprehensions
+# T: flake8-print (for catching print statements)
+enable-extensions = B,N,C
+
+# Statistics
+statistics = True
+count = True

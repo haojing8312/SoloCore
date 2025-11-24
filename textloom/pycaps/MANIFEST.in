@@ -1,0 +1,4 @@
+graft src/pycaps/effect/sound/presets
+graft src/pycaps/template/preset
+include src/pycaps/renderer/previewer/previewer.html
+include src/pycaps/transcriber/editor/editor.html

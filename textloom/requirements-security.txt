@@ -1,0 +1,48 @@
+# 安全组件依赖包
+# 这些包是新增的安全功能所需的依赖
+# 更新日期: 2025-08-20
+# 基于安全扫描结果更新的安全版本
+
+# 文件类型检测和验证
+python-magic==0.4.27
+python-magic-bin==0.4.14; sys_platform == "win32"
+
+# 图片处理和元数据提取
+Pillow>=11.2.1
+
+# 网络和URL处理增强
+requests>=2.32.4
+urllib3>=2.5.0
+
+# 安全相关工具
+cryptography>=45.0.5
+bcrypt>=4.3.0
+
+# 输入验证和清理
+bleach>=6.1.0
+html5lib>=1.1
+
+# 正则表达式优化
+regex==2023.10.3
+
+# IP地址处理
+ipaddress==1.0.23; python_version < "3.3"
+
+# 测试依赖
+pytest>=8.4.1
+pytest-asyncio>=1.1.0
+pytest-mock>=3.14.1
+
+# 性能测试
+pytest-benchmark==4.0.0
+
+# 代码覆盖率
+coverage>=7.6.0
+pytest-cov>=6.0.0
+
+# 安全扫描工具
+safety>=3.2.4
+pip-audit>=2.9.0
+bandit>=1.8.6
+semgrep>=1.132.1
+detect-secrets>=1.5.0

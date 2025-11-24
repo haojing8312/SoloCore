@@ -1,0 +1,278 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# UV package manager
+uv.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+textloom.db
+textloom.db-journal
+
+# Environment variables (敏感配置文件)
+.env
+.env.*
+!.env.example
+!env.template
+.local
+.secret
+
+# Testing
+.coverage
+.pytest_cache/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+htmlcov/
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# =============================================================================
+# TextLoom 项目特定排除规则
+# =============================================================================
+
+# 工作目录 (包含处理中的文件和临时数据)
+workspace/
+demo_workspace/
+test_workspace/
+test_workspace_simple/
+*workspace*/
+test/
+# 处理后的文件目录
+processed/
+*/processed/
+
+# 媒体文件目录
+materials/
+*/materials/
+*/images/
+*/videos/
+*/audio/
+
+# 关键帧目录
+keyframes/
+*/keyframes/
+
+# 媒体文件 (各种格式)
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.webp
+*.svg
+*.ico
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.wmv
+*.flv
+*.webm
+*.m4v
+*.mp3
+*.wav
+*.flac
+*.aac
+*.ogg
+*.m4a
+*.wma
+
+# 文档和配置文件的临时版本
+*.md.bak
+*.md.tmp
+*.json.bak
+*.yaml.bak
+*.yml.bak
+
+# 任务相关的临时文件
+upload_*
+temp_*
+*/task_*/
+*/upload_*/
+*/temp_*/
+
+# 下载的测试素材
+test_materials/
+*/test_materials/
+
+# 用户上传的文件
+uploads/
+*/uploads/
+
+# 生成的视频文件
+output/
+*/output/
+render/
+*/render/
+
+# 缓存文件
+.cache/
+cache/
+*/cache/
+
+# 备份文件
+*.bak
+*.backup
+*.old
+*~
+.#*
+\#*#
+
+# 系统文件
+.DS_Store
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# 编辑器临时文件
+.vscode/settings.json
+.vscode/launch.json
+.vscode/tasks.json
+*.sublime-project
+*.sublime-workspace
+
+# 性能分析文件
+*.prof
+*.pstats
+
+# 包管理器文件
+pip-log.txt
+pip-delete-this-directory.txt
+.installed.cfg
+
+# 单元测试 / 覆盖率报告
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# 翻译文件
+*.mo
+*.pot
+
+# 爬虫数据
+*.csv
+*.json
+*.xml
+data/
+*/data/
+
+# AI模型文件 (如果有本地模型)
+*.model
+*.pkl
+*.joblib
+models/*.bin
+models/*.safetensors
+
+# 配置文件的敏感版本
+config.local.py
+settings.local.py
+local_settings.py
+
+# 部署相关
+docker-compose.override.yml
+.dockerignore
+Dockerfile.local
+
+# 监控和分析
+*.pid
+*.seed
+*.pid.lock
+.nyc_output
+
+# 其他临时文件
+*.swp
+*.swo
+.tmp/
+tmp/
+.temp/
+temp/
+
+# 数据库修复和临时SQL文件
+database_fix.sql
+*.fix.sql
+
+# 数据库迁移配置文件 (环境特定)
+alembic.ini
+
+# 测试报告文件（可能包含敏感信息）
+test_report_*.json
+*_test_report.json
+test_results_*.json 

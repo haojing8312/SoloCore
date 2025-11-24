@@ -1,0 +1,557 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.0.0)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  PYTHON_VERSION: '3.11'
+  UV_VERSION: '0.5.1'
+
+jobs:
+  validate-release:
+    runs-on: ubuntu-latest
+    name: Validate Release
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      is-prerelease: ${{ steps.version.outputs.is-prerelease }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: Determine version
+      id: version
+      run: |
+        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          VERSION="${{ github.event.inputs.version }}"
+          IS_PRERELEASE="${{ github.event.inputs.prerelease }}"
+        else
+          VERSION="${GITHUB_REF#refs/tags/}"
+          # Check if version contains pre-release indicators
+          if [[ "$VERSION" =~ -[a-zA-Z] ]]; then
+            IS_PRERELEASE="true"
+          else
+            IS_PRERELEASE="false"
+          fi
+        fi
+        
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "is-prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
+        
+        echo "Release version: $VERSION"
+        echo "Is pre-release: $IS_PRERELEASE"
+        
+    - name: Validate version format
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+(\.[0-9]+)?)?$ ]]; then
+          echo "Error: Invalid version format: $VERSION"
+          echo "Expected format: v1.0.0 or v1.0.0-alpha.1"
+          exit 1
+        fi
+        
+    - name: Check if tag exists
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        if git tag -l | grep -q "^$VERSION$"; then
+          echo "Error: Tag $VERSION already exists"
+          exit 1
+        fi
+
+  build-release:
+    runs-on: ubuntu-latest
+    name: Build Release Artifacts
+    needs: validate-release
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+      with:
+        version: ${{ env.UV_VERSION }}
+        
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=tag
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
+          
+    - name: Update version in pyproject.toml
+      run: |
+        VERSION="${{ needs.validate-release.outputs.version }}"
+        # Remove 'v' prefix for pyproject.toml
+        CLEAN_VERSION="${VERSION#v}"
+        
+        # Update version in pyproject.toml
+        sed -i "s/^version = .*/version = \"$CLEAN_VERSION\"/" pyproject.toml
+        
+        echo "Updated version to $CLEAN_VERSION in pyproject.toml"
+        
+    - name: Build Python package
+      run: |
+        uv sync --dev
+        uv build
+        
+    - name: Create production Dockerfile
+      run: |
+        cat > Dockerfile << 'EOF'
+        # Multi-stage build for production release
+        FROM python:3.11-slim as builder
+        
+        # Build metadata
+        LABEL org.opencontainers.image.title="TextLoom"
+        LABEL org.opencontainers.image.description="Intelligent text-to-video generation system"
+        LABEL org.opencontainers.image.version="${{ needs.validate-release.outputs.version }}"
+        LABEL org.opencontainers.image.source="https://github.com/${{ github.repository }}"
+        LABEL org.opencontainers.image.licenses="MIT"
+        
+        # Install system dependencies for building
+        RUN apt-get update && apt-get install -y \
+            build-essential \
+            curl \
+            git \
+            && rm -rf /var/lib/apt/lists/*
+        
+        # Install uv
+        COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
+        
+        # Set working directory
+        WORKDIR /app
+        
+        # Copy dependency files
+        COPY pyproject.toml uv.lock ./
+        
+        # Install dependencies in a virtual environment
+        RUN uv sync --frozen --no-dev
+        
+        # Production stage
+        FROM python:3.11-slim as production
+        
+        # Install runtime system dependencies
+        RUN apt-get update && apt-get install -y \
+            curl \
+            ffmpeg \
+            libpq-dev \
+            && rm -rf /var/lib/apt/lists/* \
+            && apt-get clean
+        
+        # Create non-root user
+        RUN useradd --create-home --shell /bin/bash --uid 1000 appuser
+        
+        # Set working directory
+        WORKDIR /app
+        
+        # Copy virtual environment from builder
+        COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
+        
+        # Copy application code
+        COPY --chown=appuser:appuser . .
+        
+        # Create required directories
+        RUN mkdir -p logs workspace && \
+            chown -R appuser:appuser logs workspace
+        
+        # Switch to non-root user
+        USER appuser
+        
+        # Add virtual environment to PATH
+        ENV PATH="/app/.venv/bin:$PATH"
+        
+        # Add version info
+        ENV TEXTLOOM_VERSION="${{ needs.validate-release.outputs.version }}"
+        
+        # Health check
+        HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+            CMD curl -f http://localhost:8000/health || exit 1
+        
+        # Expose port
+        EXPOSE 8000
+        
+        # Default command
+        CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+        EOF
+        
+    - name: Build and push Docker image
+      id: build
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        
+    - name: Generate SBOM
+      uses: anchore/sbom-action@v0
+      with:
+        image: ${{ steps.meta.outputs.tags }}
+        format: spdx-json
+        output-file: sbom.spdx.json
+        
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-artifacts
+        path: |
+          dist/
+          sbom.spdx.json
+        retention-days: 90
+
+  test-release:
+    runs-on: ubuntu-latest
+    name: Test Release
+    needs: [validate-release, build-release]
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: textloom_test
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: textloom_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+          
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+      with:
+        version: ${{ env.UV_VERSION }}
+        
+    - name: Install dependencies
+      run: uv sync --dev
+      
+    - name: Create test environment
+      run: |
+        cat > .env.test << EOF
+        ENVIRONMENT=test
+        DATABASE_URL=postgresql://textloom_test:test_password@localhost:5432/textloom_test
+        REDIS_HOST=localhost
+        REDIS_PORT=6379
+        REDIS_PASSWORD=
+        CELERY_BROKER_URL=redis://localhost:6379/1
+        CELERY_RESULT_BACKEND=redis://localhost:6379/2
+        SECRET_KEY=test-secret-key-not-for-production
+        INTERNAL_TEST_TOKEN=test-token
+        OPENAI_API_KEY=test-key
+        GOOGLE_API_KEY=test-key
+        EOF
+        
+    - name: Run database migrations
+      env:
+        DATABASE_URL: postgresql://textloom_test:test_password@localhost:5432/textloom_test
+      run: uv run alembic upgrade head
+      
+    - name: Run comprehensive tests
+      env:
+        DATABASE_URL: postgresql://textloom_test:test_password@localhost:5432/textloom_test
+        REDIS_HOST: localhost
+        REDIS_PORT: 6379
+        RUN_LIVE_AI_TESTS: "0"
+      run: |
+        # Run all tests including integration tests
+        uv run pytest tests/ -v --cov=. --cov-report=xml --cov-report=html
+        
+    - name: Test Docker image
+      run: |
+        # Pull the built image
+        docker pull ${{ needs.build-release.outputs.image-tag }}
+        
+        # Run container in test mode
+        docker run --rm -d \
+          --name textloom-test \
+          -p 8001:8000 \
+          -e ENVIRONMENT=test \
+          -e SECRET_KEY=test-key \
+          ${{ needs.build-release.outputs.image-tag }}
+          
+        # Wait for container to start
+        sleep 30
+        
+        # Test health endpoint
+        curl -f http://localhost:8001/health || exit 1
+        
+        # Stop test container
+        docker stop textloom-test
+
+  create-release:
+    runs-on: ubuntu-latest
+    name: Create GitHub Release
+    needs: [validate-release, build-release, test-release]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: Download release artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: release-artifacts
+        path: artifacts/
+        
+    - name: Generate changelog
+      id: changelog
+      run: |
+        VERSION="${{ needs.validate-release.outputs.version }}"
+        
+        # Get the previous tag
+        PREV_TAG=$(git tag --sort=-version:refname | grep -v "$VERSION" | head -n 1)
+        
+        if [ -z "$PREV_TAG" ]; then
+          echo "No previous tag found, generating changelog from all commits"
+          CHANGELOG=$(git log --pretty=format:"- %s (%h)" --no-merges)
+        else
+          echo "Generating changelog from $PREV_TAG to $VERSION"
+          CHANGELOG=$(git log $PREV_TAG..HEAD --pretty=format:"- %s (%h)" --no-merges)
+        fi
+        
+        # Create changelog file
+        cat > CHANGELOG.md << EOF
+        # Release $VERSION
+        
+        ## Changes
+        $CHANGELOG
+        
+        ## Docker Image
+        - **Image**: \`${{ needs.build-release.outputs.image-tag }}\`
+        - **Digest**: \`${{ needs.build-release.outputs.image-digest }}\`
+        
+        ## Installation
+        
+        ### Using Docker
+        \`\`\`bash
+        docker pull ${{ needs.build-release.outputs.image-tag }}
+        \`\`\`
+        
+        ### Using pip
+        \`\`\`bash
+        pip install textloom==${{ needs.validate-release.outputs.version }}
+        \`\`\`
+        
+        ## Deployment
+        
+        See the deployment documentation for detailed instructions on deploying this release.
+        
+        ---
+        
+        **Full Changelog**: https://github.com/${{ github.repository }}/compare/$PREV_TAG...$VERSION
+        EOF
+        
+        echo "changelog-file=CHANGELOG.md" >> $GITHUB_OUTPUT
+        
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ needs.validate-release.outputs.version }}
+        name: "Release ${{ needs.validate-release.outputs.version }}"
+        body_path: CHANGELOG.md
+        draft: false
+        prerelease: ${{ needs.validate-release.outputs.is-prerelease }}
+        files: |
+          artifacts/dist/*
+          artifacts/sbom.spdx.json
+        generate_release_notes: true
+        
+    - name: Update latest tag
+      if: needs.validate-release.outputs.is-prerelease == 'false'
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git tag -f latest
+        git push origin latest --force
+
+  deploy-production:
+    runs-on: ubuntu-latest
+    name: Deploy to Production
+    needs: [validate-release, build-release, test-release, create-release]
+    if: needs.validate-release.outputs.is-prerelease == 'false'
+    environment: production
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Create production deployment manifest
+      run: |
+        cat > production-release-manifest.yml << EOF
+        # TextLoom Production Release Manifest
+        # Version: ${{ needs.validate-release.outputs.version }}
+        # Generated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+        
+        version: ${{ needs.validate-release.outputs.version }}
+        image: ${{ needs.build-release.outputs.image-tag }}
+        digest: ${{ needs.build-release.outputs.image-digest }}
+        
+        services:
+          api:
+            image: ${{ needs.build-release.outputs.image-tag }}
+            replicas: 2
+            resources:
+              memory: "1Gi"
+              cpu: "1000m"
+          
+          worker-video:
+            image: ${{ needs.build-release.outputs.image-tag }}
+            replicas: 2
+            resources:
+              memory: "2Gi"
+              cpu: "1500m"
+          
+          worker-maintenance:
+            image: ${{ needs.build-release.outputs.image-tag }}
+            replicas: 1
+            resources:
+              memory: "512Mi"
+              cpu: "500m"
+          
+          flower:
+            image: ${{ needs.build-release.outputs.image-tag }}
+            replicas: 1
+            resources:
+              memory: "256Mi"
+              cpu: "250m"
+          
+          beat:
+            image: ${{ needs.build-release.outputs.image-tag }}
+            replicas: 1
+            resources:
+              memory: "256Mi"
+              cpu: "250m"
+        
+        # Deployment commands
+        deployment:
+          pull: docker-compose -f docker-compose.production.yml pull
+          deploy: docker-compose -f docker-compose.production.yml up -d --remove-orphans
+          health_check: docker-compose -f docker-compose.production.yml ps --filter health=healthy
+          rollback: docker-compose -f docker-compose.production.yml down && docker-compose -f docker-compose.production.yml up -d
+        EOF
+        
+    - name: Notify production deployment
+      run: |
+        echo "## 🚀 Production Deployment Ready" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Version**: ${{ needs.validate-release.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Image**: \`${{ needs.build-release.outputs.image-tag }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+        echo "1. Download the production deployment manifest" >> $GITHUB_STEP_SUMMARY
+        echo "2. Update your production environment variables" >> $GITHUB_STEP_SUMMARY
+        echo "3. Execute the deployment commands from the manifest" >> $GITHUB_STEP_SUMMARY
+        echo "4. Verify all services are healthy" >> $GITHUB_STEP_SUMMARY
+        
+    - name: Upload production artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: production-deployment-${{ needs.validate-release.outputs.version }}
+        path: production-release-manifest.yml
+        retention-days: 365
+
+  notify-release:
+    runs-on: ubuntu-latest
+    name: Release Notifications
+    needs: [validate-release, build-release, test-release, create-release, deploy-production]
+    if: always()
+    
+    steps:
+    - name: Determine release status
+      id: status
+      run: |
+        if [[ "${{ needs.create-release.result }}" == "success" ]]; then
+          echo "status=success" >> $GITHUB_OUTPUT
+        else
+          echo "status=failure" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Create release summary
+      run: |
+        echo "# 🎉 Release ${{ needs.validate-release.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [[ "${{ steps.status.outputs.status }}" == "success" ]]; then
+          echo "✅ **Release created successfully!**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Release Information" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: ${{ needs.validate-release.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Pre-release**: ${{ needs.validate-release.outputs.is-prerelease }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Docker Image**: \`${{ needs.build-release.outputs.image-tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## What's Included" >> $GITHUB_STEP_SUMMARY
+          echo "- 🐳 Multi-platform Docker images (amd64, arm64)" >> $GITHUB_STEP_SUMMARY
+          echo "- 📦 Python packages" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔒 Security scan results" >> $GITHUB_STEP_SUMMARY
+          echo "- 📋 Software Bill of Materials (SBOM)" >> $GITHUB_STEP_SUMMARY
+          echo "- 🚀 Production deployment manifests" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ **Release failed!**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Please check the workflow logs for details." >> $GITHUB_STEP_SUMMARY
+        fi

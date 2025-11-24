@@ -159,21 +159,34 @@ class EditlyVideoEngine(VideoEngine):
 
     def _write_config_file(self, config: Dict[str, Any]) -> str:
         """写入配置文件（JSON5 格式）"""
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json5", delete=False, encoding="utf-8"
-        ) as f:
-            json.dump(config, f, indent=2, ensure_ascii=False)
-            config_path = f.name
+        # 创建持久化配置目录
+        config_dir = Path("workspace/editly_configs")
+        config_dir.mkdir(parents=True, exist_ok=True)
 
-        self.logger.info(f"配置文件已写入: {config_path}")
+        # 从输出路径提取任务信息作为文件名
+        out_path = config.get("outPath", "")
+        if out_path:
+            # 例如: workspace/processed/task_id_video_1_output.mp4 -> task_id_video_1
+            base_name = Path(out_path).stem.replace("_output", "")
+        else:
+            # 如果没有输出路径，使用时间戳
+            from datetime import datetime
+            base_name = f"config_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+        # 保存到持久化目录
+        config_path = config_dir / f"{base_name}.json5"
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
+
+        self.logger.info(f"✅ 配置文件已保存: {config_path}")
         self.logger.debug(f"配置内容:\n{json.dumps(config, indent=2, ensure_ascii=False)}")
-        return config_path
+        return str(config_path)
 
     def _execute_editly(
         self, config_path: str, progress_callback: Optional[Callable[[int], None]]
     ):
         """执行 editly 命令"""
-        cmd = f"{self.editly_path} {config_path} --fast"
+        cmd = f"{self.editly_path} {config_path}"
         self.logger.info(f"执行命令: {cmd}")
 
         process = subprocess.Popen(

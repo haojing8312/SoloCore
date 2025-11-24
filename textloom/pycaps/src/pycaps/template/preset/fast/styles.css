@@ -1,0 +1,15 @@
+.word {
+    font-family: cursive, sans-serif;
+    font-size: 30px;
+    color: white;
+    font-weight: bold;
+    text-shadow:
+        0 -2px black,
+        -2px 0 black,
+        0 3px 0 black,
+        3px 0 black,
+        3px 3px black,
+        3px 2px black,
+        2px 3px black;
+    padding: 10px 5px;
+}

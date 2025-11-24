@@ -113,3 +113,31 @@ build/
 *.tmp
 *.temp
 .cache/
+nul
+
+# Test directories and files
+test_nano_banana/
+test_pycaps/
+textloom/test_nano_banana/
+textloom/test_pycaps/
+test_*.md
+textloom/test_*.md
+textloom/test_*.py
+!tests/
+!textloom/tests/
+
+# Work directories
+work/
+
+# Temporary SQL and analysis files
+*.fix.sql
+add_columns.sql
+textloom/add_columns.sql
+log_analyzer.py
+textloom/log_analyzer.py
+validate_migration.py
+textloom/validate_migration.py
+
+# Session notes
+*-this-session-is-being-continued-from-a-previous-co.txt
+textloom/*-this-session-is-being-continued-from-a-previous-co.txt

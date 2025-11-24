@@ -1,0 +1,120 @@
+version: '3.8'
+
+services:
+  # FastAPI API服务
+  fastapi:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: textloom_api
+    ports:
+      - "48095:48095"
+    environment:
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - DATABASE_URL=${DATABASE_URL}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+    volumes:
+      - ./workspace:/app/workspace
+      - ./logs:/app/logs
+      - ./config.py:/app/config.py
+    command: uvicorn main:app --host 0.0.0.0 --port 48095
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:48095/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Celery Worker - 视频处理
+  celery-worker-video:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: textloom_worker_video
+    environment:
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - DATABASE_URL=${DATABASE_URL}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+      - CELERY_WORKER_CONCURRENCY=2
+    volumes:
+      - ./workspace:/app/workspace
+      - ./logs:/app/logs
+      - ./config.py:/app/config.py
+    command: celery -A celery_config worker --loglevel=info --concurrency=2 --queues=video_processing,video_generation --hostname=worker-video@%h
+    healthcheck:
+      test: ["CMD", "celery", "-A", "celery_config", "inspect", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Celery Worker - 维护任务
+  celery-worker-maintenance:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: textloom_worker_maintenance
+    environment:
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - DATABASE_URL=${DATABASE_URL}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+      - CELERY_WORKER_CONCURRENCY=1
+    volumes:
+      - ./workspace:/app/workspace
+      - ./logs:/app/logs
+      - ./config.py:/app/config.py
+    command: celery -A celery_config worker --loglevel=info --concurrency=1 --queues=maintenance,monitoring --hostname=worker-maintenance@%h
+    restart: unless-stopped
+
+  # Celery Flower - 监控界面
+  celery-flower:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: textloom_flower
+    ports:
+      - "127.0.0.1:5555:5555"
+    environment:
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+    command: celery -A celery_config flower --address=127.0.0.1 --port=5555 --logging=info --enable_events
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5555"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Celery Beat - 定时任务调度器（可选）
+  celery-beat:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: textloom_beat
+    environment:
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - DATABASE_URL=${DATABASE_URL}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+    volumes:
+      - ./logs:/app/logs
+    command: celery -A celery_config beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+    restart: unless-stopped
+
+networks:
+  default:
+    name: textloom_network
