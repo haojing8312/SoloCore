@@ -50,287 +50,91 @@ class SyncTaskProcessor:
         persona_id: Optional[int],
         progress_callback: Optional[Callable[[int, str, str], None]] = None
     ) -> List[Dict[str, Any]]:
-        """并行生成多个子任务的脚本"""
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        from models.celery_db import sync_update_sub_video_task
-        
-        def generate_single_script(sub_task_id: str) -> Dict[str, Any]:
-            """为单个子任务生成脚本"""
-            try:
-                # 获取子任务信息
-                script_style = sub_task_id.split('_')[-1]  # 从sub_task_id推断，或查数据库
-                if "video_1" in sub_task_id:
-                    style = "default"
-                elif "video_2" in sub_task_id:
-                    style = "product_geek"
-                else:
-                    style = "default"
-                
-                logger.info(f"开始为子任务 {sub_task_id} 生成脚本，风格: {style}")
-                
-                # 更新子任务状态为脚本生成中
-                sync_update_sub_video_task(sub_task_id, {
-                    "status": "processing",
-                    "progress": 25
-                })
-                
-                # 生成单个脚本
-                script_result = self.script_generator.generate_single_script_sync(
-                    task_id=task_id,
-                    topic=topic,
-                    source_content=source_content,
-                    material_context=material_context,
-                    persona_id=persona_id,
-                    script_style=style
-                )
-                
-                if script_result.get("success"):
-                    script_data = script_result.get("script_data", {})
-                    
-                    # 更新子任务的脚本信息
-                    sync_update_sub_video_task(sub_task_id, {
-                        "script_id": script_data.get("script_id"),
-                        "script_data": {
-                            "titles": script_data.get("titles", []),
-                            "narration": script_data.get("narration", ""),
-                            "scenes": script_data.get("scenes", []),  # 添加scenes字段
-                            "material_mapping": script_data.get("material_mapping", {}),
-                            "description": script_data.get("description", ""),
-                            "tags": script_data.get("tags", []),
-                            "estimated_duration": script_data.get("estimated_duration"),
-                            "word_count": script_data.get("word_count"),
-                            "scene_count": script_data.get("scene_count", 0),  # 添加场景数
-                            "material_count": script_data.get("material_count")
-                        },
-                        "status": "processing",  # 修改状态名称
-                        "progress": 50
-                    })
-                    
-                    logger.info(f"子任务 {sub_task_id} 脚本生成成功")
-                    return {"sub_task_id": sub_task_id, "success": True, "script_data": script_data}
-                else:
-                    # 脚本生成失败
-                    error_msg = script_result.get("error", "脚本生成失败")
-                    sync_update_sub_video_task(sub_task_id, {
-                        "status": "failed",
-                        "error_message": error_msg,
-                        "progress": 0
-                    })
-                    logger.error(f"子任务 {sub_task_id} 脚本生成失败: {error_msg}")
-                    return {"sub_task_id": sub_task_id, "success": False, "error": error_msg}
-                    
-            except Exception as e:
-                error_msg = f"脚本生成异常: {str(e)}"
-                sync_update_sub_video_task(sub_task_id, {
-                    "status": "failed",
-                    "error_message": error_msg,
-                    "progress": 0
-                })
-                logger.error(f"子任务 {sub_task_id} 脚本生成异常: {e}")
-                return {"sub_task_id": sub_task_id, "success": False, "error": error_msg}
-        
-        # 并行执行脚本生成
-        results = []
-        max_workers = min(len(sub_task_ids), 3)  # 限制并发数
-        
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # 提交所有任务
-            future_to_subtask = {
-                executor.submit(generate_single_script, sub_task_id): sub_task_id 
-                for sub_task_id in sub_task_ids
-            }
-            
-            # 收集结果
-            completed = 0
-            for future in as_completed(future_to_subtask):
-                sub_task_id = future_to_subtask[future]
-                try:
-                    result = future.result()
-                    results.append(result)
-                    completed += 1
-                    
-                    # 更新总进度
-                    progress = 60 + (completed / len(sub_task_ids)) * 15  # 60-75%
-                    if progress_callback:
-                        progress_callback(
-                            int(progress), 
-                            "script_generation", 
-                            f"脚本生成进度: {completed}/{len(sub_task_ids)}"
-                        )
-                    
-                except Exception as e:
-                    logger.error(f"子任务 {sub_task_id} 处理异常: {e}")
-                    results.append({"sub_task_id": sub_task_id, "success": False, "error": str(e)})
-        
-        successful_results = [r for r in results if r.get("success")]
-        failed_results = [r for r in results if not r.get("success")]
-        
-        logger.info(f"并行脚本生成完成 - 成功: {len(successful_results)}, 失败: {len(failed_results)}")
-        
-        # 更新主任务进度
-        self._update_main_task_progress(task_id, sub_task_ids)
-        
-        return results
+        """
+        单视频模式脚本生成（保持兼容性接口）
 
-    def _update_main_task_progress(self, task_id: str, sub_task_ids: List[str]):
-        """根据子任务状态同步更新主任务进度和状态"""
-        from models.celery_db import sync_update_task_status, sync_get_sub_video_task_by_id
-        
+        注意：虽然名称是parallel，但在单视频模式下只生成一个脚本
+        保留参数 sub_task_ids 是为了兼容现有调用代码
+        """
         try:
-            # 统计子任务状态（查询数据库获取实际状态）
-            completed_count = 0
-            failed_count = 0
-            processing_count = 0
-            pending_count = 0
-            
-            # 同时收集子任务的详细进度信息
-            sub_task_progresses = []
-            
-            for sub_task_id in sub_task_ids:
-                sub_task = sync_get_sub_video_task_by_id(sub_task_id)
-                if sub_task:
-                    status = sub_task.get("status", "pending")
-                    progress = sub_task.get("progress", 0) or 0
-                    sub_task_progresses.append(progress)
-                    
-                    if status == "completed":
-                        completed_count += 1
-                    elif status in ["failed", "error"]:
-                        failed_count += 1
-                    elif status in ["processing", "processing"]:
-                        processing_count += 1
-                    else:  # pending, script_failed 等
-                        pending_count += 1
-                else:
-                    # 子任务不存在，按待处理计算
-                    pending_count += 1
-                    sub_task_progresses.append(0)
-            
-            # 计算主任务状态和进度
-            total_subtasks = len(sub_task_ids)
-            if total_subtasks == 0:
-                return
-            
-            # 根据子任务状态确定主任务状态和进度
-            if completed_count == total_subtasks and total_subtasks > 0:
-                # 所有子任务完成
-                main_status = "completed"
-                main_progress = 100
-                message = f"所有{total_subtasks}个子任务已完成"
-                
-            elif completed_count + failed_count == total_subtasks and total_subtasks > 0:
-                # 所有子任务都结束了（成功+失败）
-                if completed_count > 0:
-                    main_status = "completed"  # 有成功的就算完成
-                    main_progress = 100
-                    message = f"完成{completed_count}个，失败{failed_count}个子任务"
-                else:
-                    main_status = "failed"
-                    main_progress = 75  # 脚本生成完成，但视频生成全失败
-                    message = f"所有{total_subtasks}个子任务均失败"
-                    
+            # 单视频模式：只生成一个脚本
+            logger.info(f"开始生成单视频脚本 - 任务: {task_id}")
+
+            # 获取脚本风格（从数据库或使用默认值）
+            task_info = sync_get_task_by_id(task_id)
+            script_style = task_info.get("script_style_type", "default") if task_info else "default"
+
+            if progress_callback:
+                progress_callback(60, "script_generation", f"开始生成脚本（风格: {script_style}）...")
+
+            # 生成单个脚本
+            script_result = self.script_generator.generate_single_script_sync(
+                task_id=task_id,
+                topic=topic,
+                source_content=source_content,
+                material_context=material_context,
+                persona_id=persona_id,
+                script_style=script_style
+            )
+
+            if script_result.get("success"):
+                script_data = script_result.get("script_data", {})
+
+                # 更新主任务的脚本数据（不再依赖SubVideoTask）
+                try:
+                    # 使用通用的任务状态更新函数来保存脚本数据
+                    sync_update_task_status(task_id, "processing", {
+                        "script_id": script_data.get("script_id"),
+                        "script_data": script_data,
+                        "script_style_type": script_style
+                    })
+                except Exception as e:
+                    logger.warning(f"更新主任务脚本数据失败: {e}")
+
+                logger.info(f"单视频脚本生成成功 - 任务: {task_id}")
+
+                if progress_callback:
+                    progress_callback(75, "script_generation", "脚本生成完成")
+
+                # 返回兼容格式（使用虚拟sub_task_id）
+                return [{
+                    "sub_task_id": sub_task_ids[0] if sub_task_ids else f"{task_id}_video_1",
+                    "success": True,
+                    "script_data": script_data,
+                    "script_style": script_style
+                }]
             else:
-                # 还有任务在处理中或待处理 - 使用更精确的进度计算
-                main_status = "processing"
-                
-                # 新的进度计算逻辑：
-                # 1. 基础进度55%（前面阶段：素材处理25% + 素材分析25% + 子任务创建5%）
-                # 2. 脚本生成阶段20%（55%-75%）
-                # 3. 视频生成阶段25%（75%-100%）
-                
-                base_progress = 55  # 前面阶段已完成
-                script_stage_progress = 20  # 脚本生成阶段进度
-                video_stage_progress = 25   # 视频生成阶段进度
-                
-                # 计算脚本生成完成率（假设所有子任务的脚本都已生成）
-                script_completion_rate = 1.0  # 能到这个方法说明脚本已生成
-                
-                # 计算视频生成的平均进度，但要考虑任务状态
-                if sub_task_progresses:
-                    # 子任务进度通常是视频生成阶段的进度(0-100)
-                    # 但要根据实际状态调整，避免过高估计
-                    total_weighted_progress = 0
-                    for sub_task_id in sub_task_ids:
-                        sub_task = sync_get_sub_video_task_by_id(sub_task_id)
-                        if sub_task:
-                            status = sub_task.get("status", "pending")
-                            progress = sub_task.get("progress", 0) or 0
-                            
-                            # 根据状态调整进度权重
-                            if status == "completed":
-                                weight = 1.0  # 完成的任务全权重
-                            elif status in ["processing", "processing"]:
-                                weight = min(progress / 100.0, 0.95)  # 处理中的任务最多95%权重
-                            elif status in ["failed", "error"]:
-                                weight = 0.0  # 失败的任务0权重
-                            else:
-                                weight = progress / 100.0 * 0.5  # 其他状态减半权重
-                            
-                            total_weighted_progress += weight
-                    
-                    video_completion_rate = total_weighted_progress / len(sub_task_ids)
-                else:
-                    video_completion_rate = 0.0
-                
-                # 计算最终进度
-                main_progress = int(
-                    base_progress + 
-                    script_stage_progress * script_completion_rate +
-                    video_stage_progress * video_completion_rate
-                )
-                
-                # 严格限制：只要有任务未完成，主进度不能达到100%
-                if processing_count > 0 or pending_count > 0:
-                    main_progress = min(main_progress, 95)
-                
-                # 如果所有任务都失败了，进度最多75%（脚本生成完成）
-                if completed_count == 0 and failed_count > 0:
-                    main_progress = min(main_progress, 75)
-                
-                message = f"进行中: 完成{completed_count}个，失败{failed_count}个，处理中{processing_count}个，待处理{pending_count}个"
-            
-            # 更新主任务状态和进度
-            sync_update_task_status(task_id, main_status, message)
-            from models.celery_db import sync_update_task_progress
-            
-            # 特殊处理：如果主任务应该是processing但当前可能进度过高，需要强制更新进度
-            if main_status == "processing":
-                from models.celery_db import sync_get_task_by_id
-                current_task = sync_get_task_by_id(task_id)
-                if current_task and current_task.get("progress", 0) >= 100:
-                    # 当前进度是100%但任务还在处理中，需要强制回退进度
-                    # 直接使用SQL更新绕过进度防回退机制
-                    from models.celery_db import get_sync_db_connection
-                    with get_sync_db_connection() as conn:
-                        with conn.cursor() as cursor:
-                            from datetime import datetime
-                            cursor.execute("""
-                                UPDATE textloom_core.tasks 
-                                SET progress = %s, updated_at = %s 
-                                WHERE id = %s AND progress >= 100
-                            """, (main_progress, datetime.utcnow(), task_id))
-                            conn.commit()
-                    logger.warning(f"强制回退主任务进度: {task_id} -> {main_progress}% (从100%回退)")
-                else:
-                    # 正常更新进度
-                    sync_update_task_progress(task_id, main_progress, "video_generation", message)
-            else:
-                # 非processing状态，正常更新
-                sync_update_task_progress(task_id, main_progress, "video_generation", message)
-            
-            # 更新当前阶段
-            from models.celery_db import sync_update_task_stage
-            if main_status == "completed":
-                sync_update_task_stage(task_id, "completed")
-            elif main_status == "failed":
-                sync_update_task_stage(task_id, "failed") 
-            else:
-                sync_update_task_stage(task_id, "video_generation")
-            
-            logger.info(f"主任务状态同步: {task_id} -> {main_status} ({main_progress}%) - {message}")
-            
+                # 脚本生成失败
+                error_msg = script_result.get("error", "脚本生成失败")
+                logger.error(f"单视频脚本生成失败 - 任务: {task_id}: {error_msg}")
+
+                return [{
+                    "sub_task_id": sub_task_ids[0] if sub_task_ids else f"{task_id}_video_1",
+                    "success": False,
+                    "error": error_msg
+                }]
+
         except Exception as e:
-            logger.error(f"更新主任务进度失败: {e}")
+            error_msg = f"脚本生成异常: {str(e)}"
+            logger.error(f"单视频脚本生成异常 - 任务: {task_id}: {e}", exc_info=True)
+
+            return [{
+                "sub_task_id": sub_task_ids[0] if sub_task_ids else f"{task_id}_video_1",
+                "success": False,
+                "error": error_msg
+            }]
+
+    def _update_main_task_progress(self, task_id: str, sub_task_ids: List[str] = None):
+        """
+        单视频模式进度更新（简化版）
+
+        注意：sub_task_ids 参数保留用于兼容性，但在单视频模式下已不使用
+        进度现在基于主任务的实际执行阶段，而不是子任务状态
+        """
+        # 单视频模式：此方法已简化为空操作
+        # 进度由主流程在各阶段直接调用 sync_update_task_progress 更新
+        # 保留此方法仅为兼容现有调用点
+        logger.debug(f"单视频模式：跳过 _update_main_task_progress (任务: {task_id})")
 
     def _generate_videos_parallel(
         self,
@@ -340,178 +144,121 @@ class SyncTaskProcessor:
         mode: str,
         progress_callback: Optional[Callable[[int, str, str], None]] = None
     ) -> List[Dict[str, Any]]:
-        """并行生成多个子任务的视频"""
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        from models.celery_db import sync_update_sub_video_task, sync_get_sub_video_task_by_id
-        
-        def generate_single_video(sub_task_id: str) -> Dict[str, Any]:
-            """为单个子任务生成视频"""
-            try:
-                logger.info(f"开始为子任务 {sub_task_id} 生成视频")
-                
-                # 获取子任务的脚本信息
-                sub_task_info = sync_get_sub_video_task_by_id(sub_task_id)
-                if not sub_task_info or not sub_task_info.get('script_data'):
-                    error_msg = f"子任务 {sub_task_id} 脚本数据为空"
-                    sync_update_sub_video_task(sub_task_id, {
-                        "status": "failed",
-                        "error_message": error_msg,
-                        "progress": 0
-                    })
-                    logger.error(error_msg)
-                    return {"sub_task_id": sub_task_id, "success": False, "error": error_msg}
-                
-                # 更新子任务状态为视频生成中
-                sync_update_sub_video_task(sub_task_id, {
-                    "status": "processing",
-                    "progress": 75
-                })
-                
-                # 使用真实的视频生成器
-                video_generator = SyncVideoGenerator()
-                script_data = sub_task_info['script_data']
+        """
+        单视频模式视频生成（保持兼容性接口）
 
-                # 调用真实的视频生成方法（使用新的单视频生成方法）
-                result = video_generator.generate_single_video_by_style(
-                    script_data=script_data,
-                    media_files=media_files,
-                    task_id=task_id,
-                    script_style=script_data.get("script_style"),
-                    mode=mode
-                )
+        注意：虽然名称是parallel，但在单视频模式下只生成一个视频
+        保留参数 sub_task_ids 是为了兼容现有调用代码
+        """
+        try:
+            logger.info(f"开始生成单视频 - 任务: {task_id}")
 
-                if result and result.get('success'):
-                    result_status = result.get('status', 'unknown')
-                    video_url = result.get('video_url')
-                    thumbnail_url = result.get('thumbnail_url', '')
-                    duration = result.get('duration', 0)
-                    course_media_id = result.get('course_media_id')
-                    
-                    # 只有当视频真正完成时才设置为completed
-                    if result_status == "completed" and video_url:
-                        # 视频已立即完成
-                        sync_update_sub_video_task(sub_task_id, {
-                            "status": "completed",
-                            "progress": 100,
-                            "video_url": video_url,
-                            "thumbnail_url": thumbnail_url,
-                            "duration": duration,
-                            "course_media_id": course_media_id,
-                            "completed_at": datetime.utcnow()
-                        })
-                        
-                        logger.info(f"子任务 {sub_task_id} 视频立即完成: {video_url}")
-                        return {
-                            "sub_task_id": sub_task_id, 
-                            "success": True, 
-                            "status": "completed",
-                            "video_url": video_url,
-                            "thumbnail_url": thumbnail_url,
-                            "duration": duration
-                        }
-                    elif result_status == "processing" and course_media_id:
-                        # 视频正在处理中，由轮询任务负责后续更新
-                        sync_update_sub_video_task(sub_task_id, {
-                            "status": "processing",
-                            "progress": 80,
-                            "course_media_id": course_media_id,
-                        })
-                        
-                        logger.info(f"子任务 {sub_task_id} 视频提交成功，等待轮询: course_media_id={course_media_id}")
-                        return {
-                            "sub_task_id": sub_task_id, 
-                            "success": True, 
-                            "status": "processing",
-                            "course_media_id": course_media_id,
-                            "message": "视频生成中，由轮询任务处理"
-                        }
-                    else:
-                        # 提交成功但状态异常
-                        error_msg = f"视频提交成功但状态异常: status={result_status}, video_url={video_url}, course_media_id={course_media_id}"
-                        sync_update_sub_video_task(sub_task_id, {
-                            "status": "failed",
-                            "error_message": error_msg,
-                            "progress": 0
-                        })
-                        logger.error(f"子任务 {sub_task_id} {error_msg}")
-                        return {"sub_task_id": sub_task_id, "success": False, "error": error_msg}
-                else:
-                    error_msg = video_results[0].get('error', '视频生成失败') if video_results else '视频生成失败'
-                    sync_update_sub_video_task(sub_task_id, {
-                        "status": "failed",
-                        "error_message": error_msg,
-                        "progress": 0
-                    })
-                    logger.error(f"子任务 {sub_task_id} 视频生成失败: {error_msg}")
-                    return {"sub_task_id": sub_task_id, "success": False, "error": error_msg}
-                    
-            except Exception as e:
-                error_msg = f"视频生成异常: {str(e)}"
-                sync_update_sub_video_task(sub_task_id, {
-                    "status": "failed",
-                    "error_message": error_msg,
-                    "progress": 0
-                })
-                logger.error(f"子任务 {sub_task_id} 视频生成异常: {e}")
-                return {"sub_task_id": sub_task_id, "success": False, "error": error_msg}
-        
-        # 只为有成功脚本的子任务生成视频
-        ready_sub_tasks = []
-        for sub_task_id in sub_task_ids:
-            # 检查子任务是否有有效的脚本数据
-            sub_task_info = sync_get_sub_video_task_by_id(sub_task_id)
-            if sub_task_info and sub_task_info.get('script_data') and sub_task_info.get('status') == 'processing':
-                ready_sub_tasks.append(sub_task_id)
-                logger.info(f"子任务 {sub_task_id} 已有脚本，加入视频生成队列")
-            else:
-                logger.warning(f"子任务 {sub_task_id} 无脚本或状态不正确，跳过视频生成 - 状态: {sub_task_info.get('status') if sub_task_info else 'None'}")
-        
-        if not ready_sub_tasks:
-            logger.warning("没有子任务准备好进行视频生成")
-            return []
-        
-        # 并行执行视频生成
-        results = []
-        max_workers = min(len(ready_sub_tasks), 3)  # 限制并发数
-        
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # 提交所有任务
-            future_to_subtask = {
-                executor.submit(generate_single_video, sub_task_id): sub_task_id 
-                for sub_task_id in ready_sub_tasks
-            }
-            
-            # 收集结果
-            completed = 0
-            for future in as_completed(future_to_subtask):
-                sub_task_id = future_to_subtask[future]
-                try:
-                    result = future.result()
-                    results.append(result)
-                    completed += 1
-                    
-                    # 更新总进度
-                    progress = 80 + (completed / len(ready_sub_tasks)) * 20  # 80-100%
+            if progress_callback:
+                progress_callback(80, "video_generation", "开始生成视频...")
+
+            # 获取主任务的脚本数据
+            task_info = sync_get_task_by_id(task_id)
+            if not task_info:
+                error_msg = f"任务不存在: {task_id}"
+                logger.error(error_msg)
+                return [{
+                    "sub_task_id": sub_task_ids[0] if sub_task_ids else f"{task_id}_video_1",
+                    "success": False,
+                    "error": error_msg
+                }]
+
+            script_data = task_info.get("script_data")
+            if not script_data:
+                error_msg = f"任务 {task_id} 脚本数据为空"
+                logger.error(error_msg)
+                return [{
+                    "sub_task_id": sub_task_ids[0] if sub_task_ids else f"{task_id}_video_1",
+                    "success": False,
+                    "error": error_msg
+                }]
+
+            script_style = task_info.get("script_style_type", "default")
+
+            # 调用视频生成方法（包含 TTS 音频生成）
+            result = self.video_generator.generate_single_video_by_style(
+                script_data=script_data,
+                media_files=media_files,
+                task_id=task_id,
+                script_style=script_style,
+                mode=mode
+            )
+
+            if result and result.get('success'):
+                result_status = result.get('status', 'unknown')
+                video_url = result.get('video_url')
+                thumbnail_url = result.get('thumbnail_url', '')
+                duration = result.get('duration', 0)
+                course_media_id = result.get('course_media_id')
+
+                # 只有当视频真正完成时才设置为completed
+                if result_status == "completed" and video_url:
+                    # 视频已立即完成
+                    logger.info(f"单视频立即完成 - 任务: {task_id}: {video_url}")
+
                     if progress_callback:
-                        progress_callback(
-                            int(progress), 
-                            "video_generation", 
-                            f"视频生成进度: {completed}/{len(ready_sub_tasks)}"
-                        )
-                    
-                except Exception as e:
-                    logger.error(f"子任务 {sub_task_id} 视频生成异常: {e}")
-                    results.append({"sub_task_id": sub_task_id, "success": False, "error": str(e)})
-        
-        successful_results = [r for r in results if r.get("success")]
-        failed_results = [r for r in results if not r.get("success")]
-        
-        logger.info(f"并行视频生成完成 - 成功: {len(successful_results)}, 失败: {len(failed_results)}")
-        
-        # 更新主任务进度
-        self._update_main_task_progress(task_id, sub_task_ids)
-        
-        return results
+                        progress_callback(100, "video_generation", "视频生成完成")
+
+                    return [{
+                        "sub_task_id": sub_task_ids[0] if sub_task_ids else f"{task_id}_video_1",
+                        "success": True,
+                        "status": "completed",
+                        "video_url": video_url,
+                        "thumbnail_url": thumbnail_url,
+                        "duration": duration,
+                        "script_style": script_style
+                    }]
+
+                elif result_status == "processing" and course_media_id:
+                    # 视频正在处理中，由轮询任务负责后续更新
+                    logger.info(f"单视频提交成功 - 任务: {task_id}，等待轮询: course_media_id={course_media_id}")
+
+                    if progress_callback:
+                        progress_callback(90, "video_generation", "视频生成中，等待处理...")
+
+                    return [{
+                        "sub_task_id": sub_task_ids[0] if sub_task_ids else f"{task_id}_video_1",
+                        "success": True,
+                        "status": "processing",
+                        "course_media_id": course_media_id,
+                        "script_style": script_style,
+                        "message": "视频生成中，由轮询任务处理"
+                    }]
+
+                else:
+                    # 提交成功但状态异常
+                    error_msg = f"视频提交成功但状态异常: status={result_status}, video_url={video_url}, course_media_id={course_media_id}"
+                    logger.error(f"单视频状态异常 - 任务: {task_id}: {error_msg}")
+
+                    return [{
+                        "sub_task_id": sub_task_ids[0] if sub_task_ids else f"{task_id}_video_1",
+                        "success": False,
+                        "error": error_msg
+                    }]
+
+            else:
+                error_msg = result.get('error', '视频生成失败') if result else '视频生成失败'
+                logger.error(f"单视频生成失败 - 任务: {task_id}: {error_msg}")
+
+                return [{
+                    "sub_task_id": sub_task_ids[0] if sub_task_ids else f"{task_id}_video_1",
+                    "success": False,
+                    "error": error_msg
+                }]
+
+        except Exception as e:
+            error_msg = f"视频生成异常: {str(e)}"
+            logger.error(f"单视频生成异常 - 任务: {task_id}: {e}", exc_info=True)
+
+            return [{
+                "sub_task_id": sub_task_ids[0] if sub_task_ids else f"{task_id}_video_1",
+                "success": False,
+                "error": error_msg
+            }]
 
     def __init__(self, workspace_dir: str) -> None:
         """初始化同步任务处理器"""
@@ -711,45 +458,29 @@ class SyncTaskProcessor:
                     f"素材分析完成，分析了{len(analysis_results)}个文件",
                 )
 
-            # ================ 阶段3: 子任务拆分 (50-55%) ================
-            sync_update_task_stage(task_id, "subtask_creation")
-            if progress_callback:
-                progress_callback(50, "sub_task_creation", "开始拆分子任务...")
-
+            # ================ 阶段3: 跳过子任务拆分 (单视频模式) ================
+            # 注意: 多视频架构已移除，直接使用单视频模式
             stage3_start = datetime.utcnow()
             logger.info(
-                f"📎 阶段3开始: 子任务拆分 - 任务: {task_id}, 多视频数: {multi_video_count}"
+                f"📎 阶段3: 单视频模式 - 任务: {task_id} (跳过子任务拆分)"
             )
 
-            # 创建子任务记录
-            sub_task_ids = []
-            for i in range(multi_video_count):
-                sub_task_id = f"{task_id}_video_{i+1}"
-                script_style = self._determine_script_style(i, multi_video_count)
-                
-                # 使用同步方法创建子任务
-                from models.celery_db import sync_create_sub_video_task
-                sync_create_sub_video_task({
-                    "sub_task_id": sub_task_id,
-                    "parent_task_id": task_id,
-                    "video_index": i + 1,
-                    "script_style": script_style,
-                    "status": "pending",
-                    "progress": 0,
-                    "script_id": None,
-                    "script_data": {}
-                })
-                sub_task_ids.append(sub_task_id)
-                logger.info(f"创建子任务: {sub_task_id}, 风格: {script_style}")
+            # 单视频模式：创建一个虚拟子任务ID用于兼容现有流程
+            sub_task_ids = [f"{task_id}_video_1"]
+
+            # 从数据库获取脚本风格
+            from models.celery_db import sync_get_task_by_id
+            task_info = sync_get_task_by_id(task_id)
+            script_style = task_info.get("script_style_type", "default") if task_info else "default"
+            logger.debug(f"使用脚本风格: {script_style}")
 
             stage3_duration = (datetime.utcnow() - stage3_start).total_seconds()
             logger.info(
-                f"✅ 阶段3完成: 子任务拆分 - 任务: {task_id}, 耗时: {stage3_duration:.2f}s, "
-                f"创建子任务: {len(sub_task_ids)}个"
+                f"✅ 阶段3完成: 单视频模式 - 任务: {task_id}, 耗时: {stage3_duration:.2f}s"
             )
 
             if progress_callback:
-                progress_callback(55, "sub_task_creation", f"创建了{len(sub_task_ids)}个子任务")
+                progress_callback(55, "sub_task_creation", "单视频模式，跳过子任务拆分")
 
             # ================ 阶段4: 脚本生成 (55-75%) ================
             sync_update_task_stage(task_id, "script_generation")
