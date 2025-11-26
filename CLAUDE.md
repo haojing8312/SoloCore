@@ -161,3 +161,10 @@ pnpm ts:check                                              # 前端类型检查
 - 贡献指南: `CONTRIBUTING.md`
 - 许可证信息: `LICENSE`
 - 项目说明: `README.md`
+
+## Active Technologies
+- TypeScript 5.x, Node.js 18+ + React 18, Vite 5, shadcn/ui (Radix UI + Tailwind CSS), Zustand (状态管理), React Router 6, TanStack Query (数据获取), Recharts (图表), Axios (HTTP 客户端) (001-textloom-web-frontend)
+- LocalStorage (用户偏好), 无需数据库(所有数据通过 API 从后端获取) (001-textloom-web-frontend)
+
+## Recent Changes
+- 001-textloom-web-frontend: Added TypeScript 5.x, Node.js 18+ + React 18, Vite 5, shadcn/ui (Radix UI + Tailwind CSS), Zustand (状态管理), React Router 6, TanStack Query (数据获取), Recharts (图表), Axios (HTTP 客户端)

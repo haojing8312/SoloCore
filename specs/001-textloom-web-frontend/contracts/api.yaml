@@ -1,0 +1,527 @@
+openapi: 3.0.3
+info:
+  title: TextLoom API
+  description: TextLoom 视频生成服务 API 文档
+  version: 1.0.0
+  contact:
+    name: TextLoom Team
+    url: https://github.com/haojing8312/SoloCore
+
+servers:
+  - url: http://localhost:48095
+    description: 本地开发服务器
+  - url: http://localhost:48095/api
+    description: API 基础路径
+
+tags:
+  - name: Files
+    description: 文件上传相关接口
+  - name: Tasks
+    description: 任务管理相关接口
+  - name: Stats
+    description: 统计数据相关接口
+
+paths:
+  /api/files/upload:
+    post:
+      tags:
+        - Files
+      summary: 上传 Markdown 文件
+      description: 上传用于生成视频的 Markdown 文档
+      operationId: uploadFile
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Markdown 文件 (仅支持 .md, .markdown, .txt)
+              required:
+                - file
+      responses:
+        '200':
+          description: 文件上传成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      fileId:
+                        type: string
+                        format: uuid
+                        example: "550e8400-e29b-41d4-a716-446655440000"
+                      filename:
+                        type: string
+                        example: "example.md"
+                      size:
+                        type: integer
+                        example: 102400
+                      url:
+                        type: string
+                        example: "/uploads/550e8400-e29b-41d4-a716-446655440000.md"
+                  message:
+                    type: string
+                    example: "文件上传成功"
+        '400':
+          description: 文件验证失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: 文件过大
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/tasks/create:
+    post:
+      tags:
+        - Tasks
+      summary: 创建视频生成任务
+      description: 基于上传的文件创建视频生成任务
+      operationId: createTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fileId:
+                  type: string
+                  format: uuid
+                  example: "550e8400-e29b-41d4-a716-446655440000"
+                subtitleTemplate:
+                  type: string
+                  enum: [hype, minimalist, explosive, vibrant]
+                  example: "hype"
+                scriptStyle:
+                  type: string
+                  enum: [default]
+                  default: "default"
+                multiVideoCount:
+                  type: integer
+                  default: 1
+                  example: 1
+              required:
+                - fileId
+                - subtitleTemplate
+      responses:
+        '200':
+          description: 任务创建成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      taskId:
+                        type: string
+                        format: uuid
+                        example: "660e8400-e29b-41d4-a716-446655440001"
+                      status:
+                        $ref: '#/components/schemas/TaskStatus'
+                  message:
+                    type: string
+                    example: "任务创建成功"
+        '400':
+          description: 请求参数无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/tasks/{taskId}/status:
+    get:
+      tags:
+        - Tasks
+      summary: 查询任务状态
+      description: 查询指定任务的详细状态和进度
+      operationId: getTaskStatus
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "660e8400-e29b-41d4-a716-446655440001"
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/VideoTask'
+        '404':
+          description: 任务不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/tasks:
+    get:
+      tags:
+        - Tasks
+      summary: 查询任务列表
+      description: 查询用户的所有任务,支持筛选和分页
+      operationId: getTasks
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [all, pending, processing, completed, failed, cancelled]
+            default: "all"
+          example: "all"
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          example: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          example: 20
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [createdAt, updatedAt]
+            default: "createdAt"
+          example: "createdAt"
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: "desc"
+          example: "desc"
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      tasks:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/VideoTask'
+                      total:
+                        type: integer
+                        example: 42
+                      page:
+                        type: integer
+                        example: 1
+                      pageSize:
+                        type: integer
+                        example: 20
+
+  /api/tasks/{taskId}/cancel:
+    post:
+      tags:
+        - Tasks
+      summary: 取消任务
+      description: 取消正在进行的视频生成任务
+      operationId: cancelTask
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "660e8400-e29b-41d4-a716-446655440001"
+      responses:
+        '200':
+          description: 取消成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "任务已取消"
+        '400':
+          description: 任务状态不允许取消
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 任务不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/tasks/{taskId}:
+    delete:
+      tags:
+        - Tasks
+      summary: 删除任务
+      description: 删除已完成或失败的任务
+      operationId: deleteTask
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "660e8400-e29b-41d4-a716-446655440001"
+      responses:
+        '200':
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "任务已删除"
+        '400':
+          description: 任务状态不允许删除
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 任务不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/stats:
+    get:
+      tags:
+        - Stats
+      summary: 查询统计数据
+      description: 查询任务统计数据和趋势分析
+      operationId: getStats
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/StatsData'
+
+components:
+  schemas:
+    VideoTask:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "660e8400-e29b-41d4-a716-446655440001"
+        filename:
+          type: string
+          example: "example.md"
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+          example: 45
+        currentPhase:
+          $ref: '#/components/schemas/TaskPhase'
+        subtitleTemplate:
+          type: string
+          enum: [hype, minimalist, explosive, vibrant]
+          example: "hype"
+        scriptStyle:
+          type: string
+          enum: [default]
+          example: "default"
+        videoUrl:
+          type: string
+          nullable: true
+          example: "/videos/660e8400-e29b-41d4-a716-446655440001.mp4"
+        scriptContent:
+          type: string
+          nullable: true
+          example: "这是生成的视频脚本内容..."
+        thumbnailUrl:
+          type: string
+          nullable: true
+          example: "/thumbnails/660e8400-e29b-41d4-a716-446655440001.jpg"
+        errorMessage:
+          type: string
+          nullable: true
+          example: "文件下载失败,无法提取媒体素材"
+        errorCode:
+          type: string
+          nullable: true
+          example: "ERR_DOWNLOAD_FAILED"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2025-11-26T15:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2025-11-26T15:35:00Z"
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2025-11-26T15:40:00Z"
+        duration:
+          type: integer
+          nullable: true
+          description: 视频时长(秒)
+          example: 330
+        fileSize:
+          type: integer
+          nullable: true
+          description: 视频文件大小(字节)
+          example: 8388608
+        estimatedTime:
+          type: integer
+          nullable: true
+          description: 预计剩余时间(秒)
+          example: 300
+
+    TaskStatus:
+      type: string
+      enum:
+        - pending
+        - processing
+        - completed
+        - failed
+        - cancelled
+      example: "processing"
+
+    TaskPhase:
+      type: string
+      enum:
+        - material_processing
+        - material_analysis
+        - script_generation
+        - video_generation
+      example: "script_generation"
+
+    StatsData:
+      type: object
+      properties:
+        totalTasks:
+          type: integer
+          example: 42
+        todayTasks:
+          type: integer
+          example: 5
+        successRate:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+          example: 85.7
+        avgDuration:
+          type: number
+          format: float
+          description: 平均耗时(秒)
+          example: 320.5
+        statusDistribution:
+          type: object
+          properties:
+            pending:
+              type: integer
+              example: 2
+            processing:
+              type: integer
+              example: 3
+            completed:
+              type: integer
+              example: 30
+            failed:
+              type: integer
+              example: 5
+            cancelled:
+              type: integer
+              example: 2
+        recentTrend:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date
+                example: "2025-11-26"
+              count:
+                type: integer
+                example: 5
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: "错误信息描述"
+        code:
+          type: string
+          nullable: true
+          example: "ERR_INVALID_FILE"
+        details:
+          type: object
+          nullable: true
+          additionalProperties: true
