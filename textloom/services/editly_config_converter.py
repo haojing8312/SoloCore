@@ -80,10 +80,15 @@ class EditlyConfigConverter:
             clip = self._convert_scene_to_clip(scene, media_map, idx)
             editly_config["clips"].append(clip)
 
-        # 添加全局音频轨道（如果有）
-        audio_tracks = self._extract_global_audio_tracks(script_data)
-        if audio_tracks:
-            editly_config["audioTracks"] = audio_tracks
+        # 添加场景级音频轨道（TTS 生成的旁白）
+        scene_audio_tracks = self._extract_scene_audio_tracks(scenes)
+        if scene_audio_tracks:
+            editly_config["audioTracks"].extend(scene_audio_tracks)
+
+        # 添加全局音频轨道（背景音乐等）
+        global_audio_tracks = self._extract_global_audio_tracks(script_data)
+        if global_audio_tracks:
+            editly_config["audioTracks"].extend(global_audio_tracks)
 
         self.logger.info(f"✓ 配置转换完成: {len(editly_config['clips'])} clips")
         self.logger.info("=" * 60)
@@ -155,8 +160,17 @@ class EditlyConfigConverter:
         """
         self.logger.debug(f"转换场景 {scene_idx + 1}: scene_id={scene.get('scene_id')}")
 
+        # 优先使用音频实际时长作为场景时长，避免音频重叠
+        audio_duration = scene.get("audio_duration")
+        if audio_duration is not None:
+            scene_duration = audio_duration
+            self.logger.debug(f"使用音频时长作为场景时长: {scene_duration:.2f}s")
+        else:
+            scene_duration = scene.get("duration", 4)
+            self.logger.debug(f"使用默认场景时长: {scene_duration:.2f}s")
+
         clip = {
-            "duration": scene.get("duration", 4),
+            "duration": scene_duration,
             "layers": [],
         }
 
@@ -497,11 +511,65 @@ class EditlyConfigConverter:
             "duration": transition.get("duration", 0.5),
         }
 
+    def _extract_scene_audio_tracks(
+        self, scenes: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """
+        提取场景级音频轨道（TTS 生成的旁白）
+
+        Args:
+            scenes: 场景列表
+
+        Returns:
+            音频轨道列表（按场景顺序）
+        """
+        audio_tracks = []
+        cumulative_time = 0.0  # 累计时间（秒）
+
+        for scene in scenes:
+            audio_path = scene.get("audio_path")
+            if audio_path:
+                # 优先使用音频实际时长，如果不存在则使用场景时长
+                audio_duration = scene.get("audio_duration")
+                if audio_duration is None:
+                    # 兼容旧版本：如果没有audio_duration，使用scene的duration
+                    audio_duration = scene.get("duration", 4.0)
+                    self.logger.warning(
+                        f"场景缺少 audio_duration 字段，使用 duration: {audio_duration:.2f}s"
+                    )
+
+                # 添加音频轨道
+                audio_tracks.append({
+                    "path": audio_path,
+                    "start": cumulative_time,  # 音频开始时间
+                    "mixVolume": 1.0,  # 旁白全音量
+                })
+
+                self.logger.debug(
+                    f"添加场景音频: {audio_path}, "
+                    f"开始时间: {cumulative_time:.2f}s, "
+                    f"音频时长: {audio_duration:.2f}s"
+                )
+
+                # 累加音频时长（不是场景时长）
+                cumulative_time += audio_duration
+            else:
+                # 如果没有音频，使用场景时长
+                scene_duration = scene.get("duration", 4.0)
+                cumulative_time += scene_duration
+
+        self.logger.info(
+            f"✓ 提取场景音频轨道: {len(audio_tracks)} 个, "
+            f"总时长: {cumulative_time:.2f}s"
+        )
+
+        return audio_tracks
+
     def _extract_global_audio_tracks(
         self, script_data: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """
-        提取全局音频轨道
+        提取全局音频轨道（背景音乐等）
 
         Args:
             script_data: 脚本数据
@@ -516,8 +584,9 @@ class EditlyConfigConverter:
         if bg_music:
             audio_tracks.append({
                 "path": bg_music,
-                "mixVolume": 0.3,  # 背景音乐音量
+                "mixVolume": 0.3,  # 背景音乐音量（低于旁白）
             })
+            self.logger.info(f"✓ 添加背景音乐: {bg_music}")
 
         return audio_tracks
 

@@ -18,7 +18,9 @@
 更新: 2025-11-24 - 重构为单视频生成模式，避免并发写入冲突
 """
 
+import os
 import traceback
+from pathlib import Path
 from typing import Any, Dict, List
 
 from config import settings
@@ -28,6 +30,7 @@ from config import settings
 #     sync_create_sub_video_task,
 #     sync_update_sub_video_task,
 # )
+from services.edge_tts_service import get_tts_service
 from services.editly_video_engine import EditlyVideoEngine
 from utils.sync_logging import get_video_generator_logger, log_performance
 
@@ -250,6 +253,15 @@ class SyncVideoGenerator:
             scenes_count = len(script_data.get("scenes", []))
             self.logger.info(f"脚本场景数: {scenes_count}")
 
+            # ========== 音频生成步骤（TTS）==========
+            if settings.tts_enabled:
+                self.logger.info("🎤 开始生成旁白音频（Edge TTS）")
+                script_data = self._generate_audio_for_scenes(
+                    script_data, task_id, sub_task_id
+                )
+            else:
+                self.logger.info("⚠️ TTS 功能已禁用，跳过音频生成")
+
             # 构建输出路径
             output_path = f"workspace/processed/{sub_task_id}_output.mp4"
 
@@ -345,5 +357,92 @@ class SyncVideoGenerator:
             "sub_task_id": sub_task_id,
             "script_style": script_style,
         }
+
+    def _generate_audio_for_scenes(
+        self, script_data: Dict[str, Any], task_id: str, sub_task_id: str
+    ) -> Dict[str, Any]:
+        """
+        为场景生成 TTS 音频
+
+        Args:
+            script_data: 脚本数据（包含 scenes）
+            task_id: 主任务 ID
+            sub_task_id: 子任务 ID
+
+        Returns:
+            Dict[str, Any]: 更新后的脚本数据（每个 scene 添加 audio_path 字段）
+        """
+        scenes = script_data.get("scenes", [])
+        if not scenes:
+            self.logger.warning("脚本中没有场景，跳过音频生成")
+            return script_data
+
+        # 创建音频存储目录
+        audio_dir = Path(f"workspace/task_{task_id}/audio")
+        audio_dir.mkdir(parents=True, exist_ok=True)
+
+        self.logger.info(f"为 {len(scenes)} 个场景生成音频，目录: {audio_dir}")
+
+        # 获取 TTS 服务实例
+        tts_service = get_tts_service()
+
+        # 为每个场景生成音频
+        audio_generated_count = 0
+        audio_skipped_count = 0
+
+        for i, scene in enumerate(scenes):
+            scene_id = scene.get("scene_id", i + 1)
+            narration = scene.get("narration", "").strip()
+
+            if not narration:
+                self.logger.info(f"场景 {scene_id} 没有旁白文本，跳过")
+                audio_skipped_count += 1
+                continue
+
+            # 构建音频文件路径（使用绝对路径）
+            audio_filename = f"scene_{scene_id}_narration.mp3"
+            audio_path = audio_dir / audio_filename
+            audio_path_str = str(audio_path.absolute())
+
+            self.logger.info(
+                f"生成场景 {scene_id} 的音频: {narration[:50]}..."
+            )
+
+            # 调用 TTS 服务生成音频（带重试）
+            success = tts_service.synthesize_speech_with_retry(
+                text=narration,
+                output_path=audio_path_str,
+                max_retries=3,
+            )
+
+            if success:
+                # 获取音频时长
+                duration = tts_service.get_audio_duration(audio_path_str)
+                if duration:
+                    scene["audio_duration"] = duration
+                    self.logger.info(
+                        f"✅ 场景 {scene_id} 音频生成成功，时长: {duration:.2f}s"
+                    )
+                else:
+                    self.logger.warning(
+                        f"⚠️ 无法获取场景 {scene_id} 音频时长"
+                    )
+
+                # 将音频路径添加到场景数据（使用绝对路径）
+                scene["audio_path"] = audio_path_str
+                audio_generated_count += 1
+            else:
+                self.logger.error(
+                    f"❌ 场景 {scene_id} 音频生成失败，视频将继续生成但无音频"
+                )
+                audio_skipped_count += 1
+
+        self.logger.info(
+            f"🎤 音频生成完成: 成功 {audio_generated_count} 个，"
+            f"跳过 {audio_skipped_count} 个，"
+            f"共 {len(scenes)} 个场景"
+        )
+
+        return script_data
 
     # _safe_update_sub_task 方法已移除 - SubVideoTask 功能已完全移除

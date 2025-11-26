@@ -216,11 +216,7 @@ def process_text_to_video(
             sync_update_task_status(
                 task_id,
                 TaskStatus.PROCESSING,
-                {
-                    "stage": "video_generation",
-                    "message": "子视频任务进行中，等待合成结果轮询收敛",
-                    "updated_at": datetime.utcnow(),
-                },
+                "子视频任务进行中，等待合成结果轮询收敛",  # description参数
             )
         elif final_status in (TaskStatus.FAILED, "failed"):
             sync_update_task_status(

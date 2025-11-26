@@ -87,6 +87,13 @@ class Settings(BaseSettings):
     video_default_matting: int = 1
     video_resize_mode: str = "contain-blur"  # 视频缩放模式: contain, cover, contain-blur
 
+    # TTS（文本转语音）配置
+    tts_enabled: bool = True  # 是否启用 TTS 功能
+    tts_voice: str = "zh-CN-XiaoxiaoNeural"  # Edge TTS 语音（中文女声）
+    tts_rate: str = "+0%"  # 语速调节（-50% 到 +100%）
+    tts_volume: str = "+0%"  # 音量调节（-50% 到 +50%）
+    tts_audio_format: str = "audio-24khz-48kbitrate-mono-mp3"  # 音频格式
+
     # 数字人与声音配置（非敏感，提供默认值）
     digital_human_entity_id: str = ""
     digital_human_name: str = "数字人"
