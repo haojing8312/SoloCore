@@ -198,21 +198,42 @@ class EdgeTTSService:
 
             logger.debug(f"✓ 音频文件存在，大小: {os.path.getsize(audio_path)} bytes")
 
-            result = subprocess.run(
-                [
-                    "ffprobe",
-                    "-v",
-                    "error",
-                    "-show_entries",
-                    "format=duration",
-                    "-of",
-                    "default=noprint_wrappers=1:nokey=1",
-                    audio_path,
-                ],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
+            # Windows 下 Celery worker 中的 subprocess 需要特殊处理
+            # 使用 shell=True 可以避免 ACCESS_DENIED 错误
+            import platform
+
+            use_shell = platform.system() == "Windows"
+
+            if use_shell:
+                # Windows: 使用 shell=True 并构建命令字符串
+                cmd = (
+                    f'ffprobe -v error -show_entries format=duration '
+                    f'-of default=noprint_wrappers=1:nokey=1 "{audio_path}"'
+                )
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    shell=True,
+                )
+            else:
+                # Linux/Mac: 使用列表形式（更安全）
+                result = subprocess.run(
+                    [
+                        "ffprobe",
+                        "-v",
+                        "error",
+                        "-show_entries",
+                        "format=duration",
+                        "-of",
+                        "default=noprint_wrappers=1:nokey=1",
+                        audio_path,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
 
             logger.debug(f"✓ ffprobe 执行成功，输出: '{result.stdout.strip()}'")
 

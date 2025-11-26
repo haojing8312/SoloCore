@@ -223,14 +223,24 @@ class EditlyVideoEngine(VideoEngine):
     def _get_video_duration(self, video_path: str) -> float:
         """获取视频时长（使用 ffprobe）"""
         try:
-            cmd = [
-                "ffprobe",
-                "-v", "error",
-                "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1",
-                video_path,
-            ]
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            import platform
+            use_shell = platform.system() == "Windows"
+
+            if use_shell:
+                # Windows: 使用 shell=True 避免 ACCESS_DENIED 错误
+                cmd = f'ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "{video_path}"'
+                result = subprocess.run(cmd, capture_output=True, text=True, shell=True)
+            else:
+                # Linux/Mac: 使用列表形式（更安全）
+                cmd = [
+                    "ffprobe",
+                    "-v", "error",
+                    "-show_entries", "format=duration",
+                    "-of", "default=noprint_wrappers=1:nokey=1",
+                    video_path,
+                ]
+                result = subprocess.run(cmd, capture_output=True, text=True)
+
             duration = float(result.stdout.strip())
             return round(duration, 2)
         except Exception as e:
