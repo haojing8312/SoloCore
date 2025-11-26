@@ -13,7 +13,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from config import settings
 from models.celery_db import (
     sync_get_task_by_id,
-    sync_update_task_multi_video_results,
+    # sync_update_task_multi_video_results,  # 已移除：单视频模式不再需要此函数
     sync_update_task_progress,
     sync_update_task_status,
 )
@@ -80,16 +80,14 @@ class SyncTaskProcessor:
             if script_result.get("success"):
                 script_data = script_result.get("script_data", {})
 
-                # 更新主任务的脚本数据（不再依赖SubVideoTask）
+                # 更新主任务的脚本样式（脚本详细数据已保存在 script_contents 表中）
                 try:
-                    # 使用通用的任务状态更新函数来保存脚本数据
+                    # 只保存脚本样式类型到主任务表
                     sync_update_task_status(task_id, "processing", {
-                        "script_id": script_data.get("script_id"),
-                        "script_data": script_data,
                         "script_style_type": script_style
                     })
                 except Exception as e:
-                    logger.warning(f"更新主任务脚本数据失败: {e}")
+                    logger.warning(f"更新主任务脚本样式失败: {e}")
 
                 logger.info(f"单视频脚本生成成功 - 任务: {task_id}")
 
@@ -142,6 +140,7 @@ class SyncTaskProcessor:
         sub_task_ids: List[str],
         media_files: List[Dict[str, str]],
         mode: str,
+        script_results: List[Dict[str, Any]],
         progress_callback: Optional[Callable[[int, str, str], None]] = None
     ) -> List[Dict[str, Any]]:
         """
@@ -149,6 +148,9 @@ class SyncTaskProcessor:
 
         注意：虽然名称是parallel，但在单视频模式下只生成一个视频
         保留参数 sub_task_ids 是为了兼容现有调用代码
+
+        Args:
+            script_results: 脚本生成结果列表，包含 script_data
         """
         try:
             logger.info(f"开始生成单视频 - 任务: {task_id}")
@@ -156,10 +158,9 @@ class SyncTaskProcessor:
             if progress_callback:
                 progress_callback(80, "video_generation", "开始生成视频...")
 
-            # 获取主任务的脚本数据
-            task_info = sync_get_task_by_id(task_id)
-            if not task_info:
-                error_msg = f"任务不存在: {task_id}"
+            # 从 script_results 参数获取脚本数据（内存传递，不从数据库读取）
+            if not script_results or len(script_results) == 0:
+                error_msg = f"任务 {task_id} 脚本结果为空"
                 logger.error(error_msg)
                 return [{
                     "sub_task_id": sub_task_ids[0] if sub_task_ids else f"{task_id}_video_1",
@@ -167,7 +168,9 @@ class SyncTaskProcessor:
                     "error": error_msg
                 }]
 
-            script_data = task_info.get("script_data")
+            # 获取第一个（也是唯一的）脚本结果
+            first_script = script_results[0]
+            script_data = first_script.get("script_data")
             if not script_data:
                 error_msg = f"任务 {task_id} 脚本数据为空"
                 logger.error(error_msg)
@@ -177,7 +180,8 @@ class SyncTaskProcessor:
                     "error": error_msg
                 }]
 
-            script_style = task_info.get("script_style_type", "default")
+            script_style = first_script.get("script_style", "default")
+            logger.info(f"从内存获取脚本数据 - 任务: {task_id}, 样式: {script_style}")
 
             # 调用视频生成方法（包含 TTS 音频生成）
             result = self.video_generator.generate_single_video_by_style(
@@ -226,7 +230,8 @@ class SyncTaskProcessor:
                         "status": "processing",
                         "course_media_id": course_media_id,
                         "script_style": script_style,
-                        "message": "视频生成中，由轮询任务处理"
+                        # message字段仅用于Celery任务状态,不应传递给数据库更新
+                        # "message": "视频生成中，由轮询任务处理"
                     }]
 
                 else:
@@ -552,6 +557,7 @@ class SyncTaskProcessor:
                 sub_task_ids=sub_task_ids,
                 media_files=media_files,
                 mode=mode,
+                script_results=successful_scripts,  # 传递脚本结果（内存传递）
                 progress_callback=progress_callback
             )
             video_gen_duration = (datetime.utcnow() - video_gen_start).total_seconds()
@@ -585,7 +591,9 @@ class SyncTaskProcessor:
                 }
                 multi_video_results.append(video_result)
 
-            sync_update_task_multi_video_results(task_id, multi_video_results)
+            # sync_update_task_multi_video_results(task_id, multi_video_results)
+            # ↑ 已注释：单视频模式不再需要更新 multi_video_results 字段（该字段已从数据库删除）
+            logger.debug(f"单视频模式：跳过 multi_video_results 更新 (任务: {task_id})")
 
             # 使用_update_main_task_progress方法来基于子任务实际状态更新主任务
             # 这样避免了基于video_results的不准确状态判断
