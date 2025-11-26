@@ -184,8 +184,19 @@ class EdgeTTSService:
         Returns:
             Optional[float]: 音频时长（秒），失败返回 None
         """
+        logger = logging.getLogger(__name__)
+        logger.debug(f"🔍 开始获取音频时长: {audio_path}")
+
         try:
             import subprocess
+            import os
+
+            # 检查文件是否存在
+            if not os.path.exists(audio_path):
+                logger.error(f"❌ 音频文件不存在: {audio_path}")
+                return None
+
+            logger.debug(f"✓ 音频文件存在，大小: {os.path.getsize(audio_path)} bytes")
 
             result = subprocess.run(
                 [
@@ -203,12 +214,39 @@ class EdgeTTSService:
                 check=True,
             )
 
+            logger.debug(f"✓ ffprobe 执行成功，输出: '{result.stdout.strip()}'")
+
             duration = float(result.stdout.strip())
+            logger.info(f"✅ 成功获取音频时长: {duration:.3f}s - {audio_path}")
             return duration
 
-        except (subprocess.CalledProcessError, ValueError, FileNotFoundError) as e:
-            logging.getLogger(__name__).warning(
-                f"⚠️ 无法获取音频时长: {audio_path}, 错误: {e}"
+        except subprocess.CalledProcessError as e:
+            logger.error(
+                f"❌ ffprobe 执行失败: {audio_path}\n"
+                f"   返回码: {e.returncode}\n"
+                f"   stdout: {e.stdout}\n"
+                f"   stderr: {e.stderr}"
+            )
+            return None
+        except ValueError as e:
+            logger.error(
+                f"❌ 无法解析音频时长: {audio_path}\n"
+                f"   错误: {e}\n"
+                f"   输出: {result.stdout if 'result' in locals() else 'N/A'}"
+            )
+            return None
+        except FileNotFoundError as e:
+            logger.error(
+                f"❌ ffprobe 命令不存在: {e}\n"
+                f"   请确保 FFmpeg 已安装并在 PATH 中"
+            )
+            return None
+        except Exception as e:
+            logger.error(
+                f"❌ 获取音频时长时发生未预期的错误: {audio_path}\n"
+                f"   错误类型: {type(e).__name__}\n"
+                f"   错误信息: {e}",
+                exc_info=True
             )
             return None
 
