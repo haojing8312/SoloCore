@@ -8,7 +8,9 @@ import type { SubtitleTemplateInfo, ScriptStyle } from '@/types';
  * API Configuration
  */
 export const API_CONFIG = {
-  BASE_URL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:48095',
+  // Use relative path in development to leverage Vite proxy (avoids CORS)
+  // Use full URL in production or when VITE_API_BASE_URL is explicitly set
+  BASE_URL: import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? '' : 'http://localhost:48095'),
   TIMEOUT: 30000,
   POLLING_INTERVAL: 3000,
 } as const;
