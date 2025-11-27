@@ -291,6 +291,7 @@ frontend/
 - **[快速入门指南](./QUICKSTART.md)** - 新用户必读，5 分钟上手
 - **[API 文档](./API.md)** - 完整的 API 接口说明
 - **[组件指南](./COMPONENTS.md)** - 组件使用和开发规范
+- **[部署指南](./DEPLOYMENT.md)** - 生产环境部署方案
 - **[设计文档](./specs/spec.md)** - 产品需求和技术设计
 - **[任务列表](./specs/tasks.md)** - 开发任务和进度跟踪
 
