@@ -18,6 +18,26 @@ export default defineConfig({
         target: 'http://localhost:48095',
         changeOrigin: true,
       },
+      '/tasks': {
+        target: 'http://localhost:48095',
+        changeOrigin: true,
+      },
+      '/auth': {
+        target: 'http://localhost:48095',
+        changeOrigin: true,
+      },
+      '/personas': {
+        target: 'http://localhost:48095',
+        changeOrigin: true,
+      },
+      '/internal': {
+        target: 'http://localhost:48095',
+        changeOrigin: true,
+      },
+      '/dynamic-subtitles': {
+        target: 'http://localhost:48095',
+        changeOrigin: true,
+      },
     },
   },
   build: {

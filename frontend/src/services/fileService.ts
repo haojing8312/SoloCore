@@ -18,9 +18,9 @@ export async function uploadFile(
   onProgress?: UploadProgressCallback
 ): Promise<UploadFileResponse> {
   const formData = new FormData();
-  formData.append('file', file);
+  formData.append('files', file); // Backend expects 'files' field (supports multiple files)
 
-  const response = await api.post<UploadFileResponse>('/api/files/upload', formData, {
+  const response = await api.post<UploadFileResponse>('/tasks/attachments/upload', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },

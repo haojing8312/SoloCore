@@ -189,7 +189,7 @@ async def get_persona_by_id_endpoint(persona_id: str):
         if not persona:
             raise HTTPException(status_code=404, detail="人设不存在")
 
-        return PersonaResponse(**persona)
+        return PersonaResponse.from_db(persona)
     except HTTPException:
         raise
     except Exception as e:

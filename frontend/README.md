@@ -290,6 +290,8 @@ frontend/
 
 - **[快速入门指南](./QUICKSTART.md)** - 新用户必读，5 分钟上手
 - **[API 文档](./API.md)** - 完整的 API 接口说明
+- **[OpenAPI 在线文档](http://localhost:48095/docs)** - Swagger UI 交互式 API 文档 (需后端服务运行)
+- **[ReDoc 文档](http://localhost:48095/redoc)** - ReDoc 格式 API 文档 (需后端服务运行)
 - **[组件指南](./COMPONENTS.md)** - 组件使用和开发规范
 - **[部署指南](./DEPLOYMENT.md)** - 生产环境部署方案
 - **[设计文档](./specs/spec.md)** - 产品需求和技术设计

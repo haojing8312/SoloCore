@@ -69,11 +69,11 @@ class UserResponse(UserBase):
     id: UUID
     is_superuser: bool
     is_verified: bool
-    avatar_url: Optional[str]
-    preferences: Dict[str, Any]
+    avatar_url: Optional[str] = None
+    preferences: Optional[Dict[str, Any]] = None
     created_at: datetime
     updated_at: datetime
-    last_login_at: Optional[datetime]
+    last_login_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
