@@ -286,10 +286,22 @@ frontend/
 - ⏳ E2E 测试
 - ⏳ 文档完善
 
-## 贡献指南
+## 📚 文档
+
+- **[快速入门指南](./QUICKSTART.md)** - 新用户必读，5 分钟上手
+- **[API 文档](./API.md)** - 完整的 API 接口说明
+- **[组件指南](./COMPONENTS.md)** - 组件使用和开发规范
+- **[设计文档](./specs/spec.md)** - 产品需求和技术设计
+- **[任务列表](./specs/tasks.md)** - 开发任务和进度跟踪
+
+## 🤝 贡献指南
 
 欢迎提交 Issue 和 Pull Request 来帮助改进这个项目。
 
-## 许可证
+在贡献代码前，请阅读：
+- [组件开发规范](./COMPONENTS.md#组件开发规范)
+- [API 使用文档](./API.md)
+
+## 📄 许可证
 
 本项目采用 [MIT License](../LICENSE) 开源。
