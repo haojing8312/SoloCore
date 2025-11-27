@@ -59,6 +59,13 @@
     background-color: #F5F5F7;
     color: #1D1D1F;
     -webkit-font-smoothing: antialiased;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+
+  /* Dark mode styles */
+  .dark body {
+    background-color: #1D1D1F;
+    color: #F5F5F7;
   }
 }
 
@@ -69,6 +76,12 @@
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    transition: background-color 0.3s ease, border-color 0.3s ease;
+  }
+
+  .dark .glass-nav {
+    background-color: rgba(29, 29, 31, 0.8);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   }
 
   /* Apple card style */
@@ -80,8 +93,18 @@
     transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
   }
 
+  .dark .apple-card {
+    background: #2C2C2E;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
   .apple-card:hover {
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+  }
+
+  .dark .apple-card:hover {
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
   }
 
   /* Primary button */
@@ -117,8 +140,17 @@
     transition: all 0.2s ease;
   }
 
+  .dark .btn-secondary {
+    background-color: #3A3A3C;
+    color: #F5F5F7;
+  }
+
   .btn-secondary:hover {
     background-color: #E8E8ED;
+  }
+
+  .dark .btn-secondary:hover {
+    background-color: #48484A;
   }
 
   /* Selected card state */

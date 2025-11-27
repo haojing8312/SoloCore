@@ -11,6 +11,7 @@ import { StatsPage } from './pages/StatsPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Toast } from './components/Toast';
+import { Layout } from './components/Layout';
 
 // Create React Query client
 const queryClient = new QueryClient({
@@ -28,13 +29,15 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <ErrorBoundary>
         <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/tasks" element={<TaskListPage />} />
-            <Route path="/tasks/:taskId" element={<TaskDetailPage />} />
-            <Route path="/stats" element={<StatsPage />} />
-            <Route path="*" element={<NotFoundPage />} />
-          </Routes>
+          <Layout>
+            <Routes>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/tasks" element={<TaskListPage />} />
+              <Route path="/tasks/:taskId" element={<TaskDetailPage />} />
+              <Route path="/stats" element={<StatsPage />} />
+              <Route path="*" element={<NotFoundPage />} />
+            </Routes>
+          </Layout>
           <Toast />
         </BrowserRouter>
       </ErrorBoundary>

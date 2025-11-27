@@ -4,6 +4,7 @@
 
 import axios, { type AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
 import { API_CONFIG } from '@/utils/constants';
+import { getUserFriendlyErrorMessage } from '@/utils/errorMessages';
 
 /**
  * Create Axios instance with default configuration
@@ -42,44 +43,40 @@ api.interceptors.response.use(
     return response;
   },
   (error: AxiosError) => {
-    // Handle common error scenarios
+    // Enhance error with user-friendly message
     if (error.response) {
-      // Server responded with error status
       const status = error.response.status;
+      const data = error.response.data as { code?: string; message?: string };
 
-      switch (status) {
-        case 401:
-          // Unauthorized - redirect to login or show error
-          console.error('未授权访问,请先登录');
-          break;
+      // Get user-friendly message
+      const friendlyMessage = getUserFriendlyErrorMessage({
+        code: data?.code,
+        status,
+        message: data?.message,
+      });
 
-        case 403:
-          // Forbidden
-          console.error('没有权限访问此资源');
-          break;
+      // Create enhanced error
+      const enhancedError = new Error(friendlyMessage);
+      (enhancedError as unknown as { originalError: AxiosError }).originalError = error;
+      (enhancedError as unknown as { status: number }).status = status;
+      (enhancedError as unknown as { code?: string }).code = data?.code;
 
-        case 404:
-          // Not found
-          console.error('请求的资源不存在');
-          break;
-
-        case 500:
-        case 502:
-        case 503:
-        case 504:
-          // Server errors
-          console.error('服务器错误,请稍后重试');
-          break;
-
-        default:
-          console.error(`请求失败: ${status}`);
+      // Handle specific status codes
+      if (status === 401) {
+        // Unauthorized - clear auth and redirect to login
+        localStorage.removeItem('auth_token');
+        // Only redirect if not already on login page
+        if (!window.location.pathname.includes('/login')) {
+          window.location.href = '/login';
+        }
       }
+
+      return Promise.reject(enhancedError);
     } else if (error.request) {
-      // Request was made but no response received
-      console.error('网络连接失败,请检查网络后重试');
-    } else {
-      // Something else happened
-      console.error('请求配置错误:', error.message);
+      // Network error
+      const networkError = new Error(getUserFriendlyErrorMessage('NETWORK_ERROR'));
+      (networkError as unknown as { originalError: AxiosError }).originalError = error;
+      return Promise.reject(networkError);
     }
 
     return Promise.reject(error);
