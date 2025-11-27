@@ -22,12 +22,12 @@ export function validateFile(file: File): ValidationResult {
 
   // Check file extension
   const extension = getFileExtension(file.name);
-  if (!UPLOAD_CONFIG.ALLOWED_EXTENSIONS.includes(extension)) {
+  if (!UPLOAD_CONFIG.ALLOWED_EXTENSIONS.includes(extension as '.md' | '.markdown' | '.txt')) {
     errors.push(`仅支持 ${UPLOAD_CONFIG.ALLOWED_EXTENSIONS.join(', ')} 格式的文件`);
   }
 
   // Check MIME type (if available)
-  if (file.type && !UPLOAD_CONFIG.ALLOWED_MIME_TYPES.includes(file.type)) {
+  if (file.type && !UPLOAD_CONFIG.ALLOWED_MIME_TYPES.includes(file.type as 'text/markdown' | 'text/plain')) {
     errors.push('文件类型不正确,仅支持 Markdown 文件');
   }
 

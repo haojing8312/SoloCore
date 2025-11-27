@@ -26,12 +26,12 @@ export interface ErrorResponse {
 /**
  * 文件上传响应
  */
-export interface UploadFileResponse extends ApiResponse<{
+export type UploadFileResponse = ApiResponse<{
   fileId: string;
   filename: string;
   size: number;
   url: string;
-}> {}
+}>;
 
 /**
  * 任务创建请求
@@ -46,15 +46,15 @@ export interface CreateTaskRequest {
 /**
  * 任务创建响应
  */
-export interface CreateTaskResponse extends ApiResponse<{
+export type CreateTaskResponse = ApiResponse<{
   taskId: string;
   status: TaskStatus;
-}> {}
+}>;
 
 /**
  * 任务状态查询响应
  */
-export interface GetTaskStatusResponse extends ApiResponse<VideoTask> {}
+export type GetTaskStatusResponse = ApiResponse<VideoTask>;
 
 /**
  * 任务列表查询请求
@@ -70,22 +70,22 @@ export interface GetTasksRequest {
 /**
  * 任务列表查询响应
  */
-export interface GetTasksResponse extends ApiResponse<{
+export type GetTasksResponse = ApiResponse<{
   tasks: VideoTask[];
   total: number;
   page: number;
   pageSize: number;
-}> {}
+}>;
 
 /**
  * 任务取消响应
  */
-export interface CancelTaskResponse extends ApiResponse {}
+export type CancelTaskResponse = ApiResponse;
 
 /**
  * 任务删除响应
  */
-export interface DeleteTaskResponse extends ApiResponse {}
+export type DeleteTaskResponse = ApiResponse;
 
 /**
  * 统计数据
@@ -111,7 +111,7 @@ export interface StatsData {
 /**
  * 统计数据查询响应
  */
-export interface GetStatsResponse extends ApiResponse<StatsData> {}
+export type GetStatsResponse = ApiResponse<StatsData>;
 
 /**
  * Type guard for error response

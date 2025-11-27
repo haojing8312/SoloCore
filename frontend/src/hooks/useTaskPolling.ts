@@ -5,12 +5,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { getTaskStatus } from '@/services/taskService';
 import { API_CONFIG } from '@/utils/constants';
-import { isTaskFinished } from '@/types';
+import { isTaskFinished, type VideoTask } from '@/types';
 
 interface UseTaskPollingOptions {
   taskId: string;
   enabled?: boolean;
-  onSuccess?: (data: any) => void;
+  onSuccess?: (data: VideoTask) => void;
   onError?: (error: Error) => void;
 }
 

@@ -5,7 +5,10 @@
       "Bash(.specify/scripts/bash/setup-plan.sh:*)",
       "Bash(.specify/scripts/bash/check-prerequisites.sh:*)",
       "Bash(pnpm add:*)",
-      "Bash(pnpm dev:*)"
+      "Bash(pnpm dev:*)",
+      "Bash(git push:*)",
+      "Bash(pnpm type-check:*)",
+      "Bash(pnpm lint:*)"
     ],
     "deny": [],
     "ask": []
