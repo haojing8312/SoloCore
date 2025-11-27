@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TextLoom - Apple Style Prototype</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        /* Apple Design Token Overrides */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Helvetica Neue", sans-serif;
+            background-color: #F5F5F7; /* Apple Light Gray Background */
+            color: #1D1D1F;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* 磨砂玻璃效果 */
+        .glass-nav {
+            background-color: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        /* 卡片基础样式 */
+        .apple-card {
+            background: #FFFFFF;
+            border-radius: 18px;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
+            border: 1px solid rgba(0, 0, 0, 0.02);
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+
+        /* 按钮样式 */
+        .btn-primary {
+            background-color: #0071e3; /* Apple Blue */
+            color: white;
+            border-radius: 980px; /* Pill shape */
+            transition: all 0.2s ease;
+        }
+        .btn-primary:hover {
+            background-color: #0077ED;
+            transform: scale(1.02);
+            box-shadow: 0 4px 12px rgba(0, 113, 227, 0.3);
+        }
+        .btn-primary:active {
+            transform: scale(0.98);
+        }
+        .btn-primary:disabled {
+            background-color: #A1A1A6;
+            transform: none;
+            box-shadow: none;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background-color: #F5F5F7;
+            color: #1D1D1F;
+            border-radius: 980px;
+            transition: all 0.2s ease;
+        }
+        .btn-secondary:hover {
+            background-color: #E8E8ED;
+        }
+
+        /* --- 核心修改：选中状态样式 --- */
+        /* 使用 tailwind 的 ring utilities 实现，这里作为补充增强 */
+        .card-selected {
+            box-shadow: 0 0 0 2px #0071e3, 0 8px 30px rgba(0, 0, 0, 0.08);
+            transform: scale(1.02);
+            border-color: transparent;
+        }
+
+        /* 进度条动画 */
+        .progress-bar-fill {
+            transition: width 0.5s ease-out;
+        }
+
+        /* 页面切换动画 */
+        .fade-in {
+            animation: fadeIn 0.4s ease-out forwards;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* 隐藏滚动条但保留功能 */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen">
+
+    <nav class="fixed top-0 w-full z-50 glass-nav h-16 flex items-center justify-between px-6 lg:px-12">
+        <div class="flex items-center gap-2 cursor-pointer" onclick="switchPage('home')">
+            <div class="bg-black text-white w-8 h-8 rounded-lg flex items-center justify-center">
+                <i class="fa-solid fa-film text-sm"></i>
+            </div>
+            <span class="font-semibold text-lg tracking-tight">TextLoom</span>
+        </div>
+        
+        <div class="hidden md:flex gap-1 bg-gray-100/50 p-1 rounded-full">
+            <button onclick="switchPage('home')" id="nav-home" class="px-6 py-1.5 rounded-full text-sm font-medium transition-all bg-white shadow-sm text-black">首页</button>
+            <button onclick="switchPage('tasks')" id="nav-tasks" class="px-6 py-1.5 rounded-full text-sm font-medium text-gray-500 hover:text-black transition-all">任务列表</button>
+            <button onclick="switchPage('stats')" id="nav-stats" class="px-6 py-1.5 rounded-full text-sm font-medium text-gray-500 hover:text-black transition-all">统计</button>
+        </div>
+
+        <div class="flex items-center gap-4">
+            <button class="text-gray-500 hover:text-black transition-colors"><i class="fa-regular fa-circle-question text-lg"></i></button>
+            <div class="w-8 h-8 rounded-full bg-gray-200 overflow-hidden border border-white shadow-sm">
+                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" alt="User">
+            </div>
+        </div>
+    </nav>
+
+    <main class="flex-grow pt-24 pb-12 px-4 md:px-8 lg:px-0 max-w-5xl mx-auto w-full">
+
+        <div id="page-home" class="fade-in">
+            <div class="text-center mb-10">
+                <h1 class="text-4xl font-bold mb-3 tracking-tight">从文档到视频，只需一步。</h1>
+                <p class="text-gray-500 text-lg">上传 Markdown 脚本，AI 自动完成剪辑、配音与字幕。</p>
+            </div>
+
+            <div id="section-create" class="space-y-8 transition-all duration-500">
+                <div class="apple-card p-10 text-center border-2 border-dashed border-gray-200 hover:border-[#0071e3] hover:bg-blue-50/10 cursor-pointer transition-all group" id="dropzone" onclick="triggerFileInput()">
+                    <input type="file" id="fileInput" class="hidden" accept=".md,.markdown,.txt" onchange="handleFileSelect(this)">
+                    <div id="upload-placeholder">
+                        <div class="w-16 h-16 bg-blue-50 text-[#0071e3] rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
+                            <i class="fa-solid fa-cloud-arrow-up text-2xl"></i>
+                        </div>
+                        <h3 class="text-xl font-semibold mb-2">拖拽 Markdown 文件到这里</h3>
+                        <p class="text-gray-400 text-sm">支持 .md, .markdown, .txt (Max 10MB)</p>
+                    </div>
+                    <div id="file-selected-view" class="hidden flex items-center justify-between bg-gray-50 p-4 rounded-xl max-w-md mx-auto">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-white rounded-lg shadow-sm flex items-center justify-center text-gray-600 border">
+                                <i class="fa-brands fa-markdown text-xl"></i>
+                            </div>
+                            <div class="text-left">
+                                <p class="font-medium text-sm text-gray-900" id="filename-display">demo.md</p>
+                                <p class="text-xs text-gray-500">12 KB</p>
+                            </div>
+                        </div>
+                        <button onclick="clearFile(event)" class="text-gray-400 hover:text-red-500 p-2 rounded-full hover:bg-gray-200 transition-colors"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                </div>
+
+                <div>
+                    <h3 class="text-lg font-semibold mb-4 px-1">选择字幕风格</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" id="template-container">
+                        
+                        <div class="apple-card p-4 cursor-pointer hover:-translate-y-1 hover:shadow-lg template-card card-selected" 
+                             onclick="selectTemplate(this, 'hype')">
+                            <div class="h-24 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-xl mb-4 flex items-center justify-center text-white font-black italic text-2xl shadow-inner">
+                                HYPE
+                            </div>
+                            <div class="flex justify-between items-center px-1">
+                                <span class="font-medium text-gray-900">动感激情</span>
+                                <div class="check-icon text-[#0071e3] opacity-100 transition-opacity duration-200">
+                                    <i class="fa-solid fa-circle-check text-xl"></i>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="apple-card p-4 cursor-pointer hover:-translate-y-1 hover:shadow-lg template-card" 
+                             onclick="selectTemplate(this, 'minimalist')">
+                            <div class="h-24 bg-white border border-gray-200 rounded-xl mb-4 flex items-center justify-center text-gray-800 font-light tracking-widest text-xl shadow-sm">
+                                Minimal
+                            </div>
+                            <div class="flex justify-between items-center px-1">
+                                <span class="font-medium text-gray-600">极简风格</span>
+                                <div class="check-icon text-[#0071e3] opacity-0 transition-opacity duration-200">
+                                    <i class="fa-solid fa-circle-check text-xl"></i>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="apple-card p-4 cursor-pointer hover:-translate-y-1 hover:shadow-lg template-card" 
+                             onclick="selectTemplate(this, 'explosive')">
+                            <div class="h-24 bg-gradient-to-r from-red-600 to-red-900 rounded-xl mb-4 flex items-center justify-center text-white font-black uppercase text-xl shadow-inner">
+                                BOOM!
+                            </div>
+                            <div class="flex justify-between items-center px-1">
+                                <span class="font-medium text-gray-600">爆炸冲击</span>
+                                <div class="check-icon text-[#0071e3] opacity-0 transition-opacity duration-200">
+                                    <i class="fa-solid fa-circle-check text-xl"></i>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="apple-card p-4 cursor-pointer hover:-translate-y-1 hover:shadow-lg template-card" 
+                             onclick="selectTemplate(this, 'vibrant')">
+                            <div class="h-24 bg-gradient-to-tr from-purple-400 to-pink-500 rounded-xl mb-4 flex items-center justify-center text-white font-bold text-xl shadow-inner">
+                                Vibe
+                            </div>
+                            <div class="flex justify-between items-center px-1">
+                                <span class="font-medium text-gray-600">活力四射</span>
+                                <div class="check-icon text-[#0071e3] opacity-0 transition-opacity duration-200">
+                                    <i class="fa-solid fa-circle-check text-xl"></i>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="flex justify-center pt-4">
+                    <button id="generateBtn" onclick="startGeneration()" disabled class="btn-primary px-12 py-4 text-lg font-medium flex items-center gap-2 shadow-lg shadow-blue-500/30 opacity-50 cursor-not-allowed transition-opacity">
+                        <span>开始生成视频</span>
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div id="section-processing" class="hidden apple-card p-12 text-center max-w-2xl mx-auto mt-10">
+                <div class="relative w-20 h-20 mx-auto mb-6">
+                    <svg class="animate-spin w-full h-full text-gray-200" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" style="color: #0071e3;"></path>
+                    </svg>
+                </div>
+                <h2 class="text-2xl font-bold mb-2">正在生成视频...</h2>
+                <p class="text-gray-500 mb-8 text-sm" id="process-stage-text">正在分析脚本结构...</p>
+                
+                <div class="w-full bg-gray-100 rounded-full h-2.5 mb-2 overflow-hidden">
+                    <div id="progress-bar" class="bg-[#0071e3] h-2.5 rounded-full progress-bar-fill" style="width: 0%"></div>
+                </div>
+                <div class="flex justify-between text-xs text-gray-400 px-1">
+                    <span id="progress-percent">0%</span>
+                    <span>预计剩余: <span id="time-remaining">2 min</span></span>
+                </div>
+                
+                <button onclick="cancelGeneration()" class="mt-8 text-red-500 text-sm font-medium hover:text-red-600">取消生成</button>
+            </div>
+
+            <div id="section-result" class="hidden fade-in">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div class="lg:col-span-2 space-y-4">
+                         <div class="apple-card overflow-hidden bg-black aspect-video relative group flex items-center justify-center">
+                            <img src="https://images.unsplash.com/photo-1626544827763-d516dce335ca?q=80&w=1000&auto=format&fit=crop" class="absolute inset-0 w-full h-full object-cover opacity-60">
+                            <button class="w-16 h-16 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white text-2xl hover:scale-110 transition-transform border border-white/30 z-10">
+                                <i class="fa-solid fa-play ml-1"></i>
+                            </button>
+                            <span class="absolute bottom-4 right-4 bg-black/70 text-white text-xs px-2 py-1 rounded">05:30</span>
+                        </div>
+                        <div class="flex justify-between items-start px-2">
+                            <div>
+                                <h2 class="text-2xl font-bold text-gray-900">NanoBanana Tripo3D 自动化工厂</h2>
+                                <p class="text-gray-500 text-sm mt-1">生成于刚刚 • Hype 风格</p>
+                            </div>
+                            <div class="flex gap-2">
+                                <button class="btn-secondary w-10 h-10 flex items-center justify-center"><i class="fa-solid fa-share-nodes"></i></button>
+                                <button class="btn-primary px-6 py-2 text-sm font-medium flex items-center gap-2">
+                                    <i class="fa-solid fa-download"></i> 下载
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div class="apple-card p-6">
+                            <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">内容概览</h3>
+                            <div class="space-y-4">
+                                <div class="flex justify-between text-sm">
+                                    <span class="text-gray-500">字数统计</span>
+                                    <span class="font-medium">820 字</span>
+                                </div>
+                                <div class="flex justify-between text-sm">
+                                    <span class="text-gray-500">视频时长</span>
+                                    <span class="font-medium">5分30秒</span>
+                                </div>
+                                <div class="flex justify-between text-sm">
+                                    <span class="text-gray-500">分辨率</span>
+                                    <span class="font-medium">1080P</span>
+                                </div>
+                            </div>
+                            <hr class="my-6 border-gray-100">
+                            <button onclick="openScriptModal()" class="w-full btn-secondary py-2.5 text-sm font-medium flex items-center justify-center gap-2 hover:bg-gray-200">
+                                <i class="fa-regular fa-file-lines"></i> 查看完整脚本
+                            </button>
+                        </div>
+                        
+                        <div class="apple-card p-6 flex flex-col items-center justify-center py-8 text-center">
+                            <p class="text-sm text-gray-500 mb-4">对结果不满意？</p>
+                            <button onclick="resetHome()" class="text-[#0071e3] font-medium text-sm flex items-center gap-1 hover:underline">
+                                <i class="fa-solid fa-rotate-right"></i> 重新生成
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="page-tasks" class="hidden fade-in">
+             <div class="flex justify-between items-center mb-8">
+                <h1 class="text-3xl font-bold tracking-tight">任务列表</h1>
+                <div class="flex gap-2">
+                    <select class="bg-white border-none py-2 px-4 rounded-lg text-sm font-medium shadow-sm focus:ring-0 cursor-pointer">
+                        <option>所有状态</option>
+                        <option>进行中</option>
+                        <option>已完成</option>
+                        <option>失败</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="space-y-4">
+                <div class="apple-card p-5 flex items-center gap-4 hover:shadow-md cursor-pointer group">
+                    <div class="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <i class="fa-solid fa-spinner fa-spin text-blue-500 text-xl"></i>
+                    </div>
+                    <div class="flex-grow min-w-0">
+                        <div class="flex justify-between items-start mb-1">
+                            <h3 class="font-semibold text-gray-900 truncate">AI驱动的视频生成技术解析</h3>
+                            <span class="bg-blue-50 text-blue-600 text-xs px-2 py-0.5 rounded-full font-medium">生成中 45%</span>
+                        </div>
+                        <p class="text-sm text-gray-500">创建于 14:20 • 脚本生成阶段</p>
+                        <div class="w-48 h-1 bg-gray-100 rounded-full mt-2 overflow-hidden">
+                            <div class="bg-blue-500 h-full" style="width: 45%"></div>
+                        </div>
+                    </div>
+                    <div class="opacity-0 group-hover:opacity-100 transition-opacity">
+                         <button class="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200"><i class="fa-solid fa-chevron-right text-xs"></i></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="page-stats" class="hidden fade-in">
+             <h1 class="text-3xl font-bold tracking-tight mb-8">数据概览</h1>
+             <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div class="apple-card p-6">
+                    <p class="text-sm text-gray-500 font-medium mb-1">总生成视频</p>
+                    <div class="flex items-baseline gap-2">
+                        <h2 class="text-3xl font-bold">23</h2>
+                        <span class="text-xs text-green-600 font-medium bg-green-50 px-1.5 rounded">+5 本周</span>
+                    </div>
+                </div>
+                <div class="apple-card p-6">
+                    <p class="text-sm text-gray-500 font-medium mb-1">成功率</p>
+                    <div class="flex items-baseline gap-2">
+                        <h2 class="text-3xl font-bold">78.3%</h2>
+                        <span class="text-xs text-green-600 font-medium bg-green-50 px-1.5 rounded">↑ 2.1%</span>
+                    </div>
+                </div>
+                <div class="apple-card p-6">
+                    <p class="text-sm text-gray-500 font-medium mb-1">平均处理时间</p>
+                    <div class="flex items-baseline gap-2">
+                        <h2 class="text-3xl font-bold">12m</h2>
+                        <span class="text-xs text-green-600 font-medium bg-green-50 px-1.5 rounded">↓ 3m</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <div id="script-modal" class="fixed inset-0 z-[100] hidden">
+        <div class="absolute inset-0 bg-black/20 backdrop-blur-sm transition-opacity" onclick="closeScriptModal()"></div>
+        <div class="absolute inset-0 flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[80vh] flex flex-col transform transition-all scale-100">
+                <div class="flex items-center justify-between p-6 border-b border-gray-100">
+                    <h3 class="text-xl font-bold">📝 视频脚本</h3>
+                    <button onclick="closeScriptModal()" class="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <div class="p-8 overflow-y-auto no-scrollbar font-mono text-sm leading-relaxed text-gray-700 bg-[#F9F9FB]">
+                    <p class="mb-4 font-bold text-gray-900">[场景1: 介绍]</p>
+                    <p class="mb-6">欢迎来到 NanoBanana 的 3D 建模新时代！...</p>
+                    <p class="text-gray-400 italic">... (剩余 600 字)</p>
+                </div>
+                <div class="p-4 border-t border-gray-100 flex justify-end gap-3 bg-white rounded-b-2xl">
+                    <button class="btn-secondary px-4 py-2 text-sm font-medium"><i class="fa-regular fa-copy mr-2"></i>复制</button>
+                    <button class="btn-secondary px-4 py-2 text-sm font-medium"><i class="fa-solid fa-download mr-2"></i>下载 .txt</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // === Navigation Logic ===
+        function switchPage(pageId) {
+            document.getElementById('page-home').classList.add('hidden');
+            document.getElementById('page-tasks').classList.add('hidden');
+            document.getElementById('page-stats').classList.add('hidden');
+            
+            ['home', 'tasks', 'stats'].forEach(id => {
+                const btn = document.getElementById(`nav-${id}`);
+                if (id === pageId) {
+                    btn.classList.add('bg-white', 'shadow-sm', 'text-black');
+                    btn.classList.remove('text-gray-500');
+                } else {
+                    btn.classList.remove('bg-white', 'shadow-sm', 'text-black');
+                    btn.classList.add('text-gray-500');
+                }
+            });
+
+            const target = document.getElementById(`page-${pageId}`);
+            target.classList.remove('hidden');
+        }
+
+        // === Home Logic ===
+        let selectedFile = null;
+        let selectedTemplateId = 'hype';
+
+        function triggerFileInput() {
+            document.getElementById('fileInput').click();
+        }
+
+        function handleFileSelect(input) {
+            if (input.files && input.files[0]) {
+                selectedFile = input.files[0];
+                
+                document.getElementById('upload-placeholder').classList.add('hidden');
+                document.getElementById('file-selected-view').classList.remove('hidden');
+                document.getElementById('file-selected-view').classList.add('flex');
+                document.getElementById('filename-display').innerText = selectedFile.name;
+                document.getElementById('dropzone').classList.add('border-[#0071e3]', 'bg-blue-50/20');
+                document.getElementById('dropzone').classList.remove('border-gray-200');
+                
+                checkFormValidity();
+            }
+        }
+
+        function clearFile(e) {
+            e.stopPropagation();
+            selectedFile = null;
+            document.getElementById('fileInput').value = '';
+            
+            document.getElementById('upload-placeholder').classList.remove('hidden');
+            document.getElementById('file-selected-view').classList.add('hidden');
+            document.getElementById('file-selected-view').classList.remove('flex');
+            document.getElementById('dropzone').classList.remove('border-[#0071e3]', 'bg-blue-50/20');
+            document.getElementById('dropzone').classList.add('border-gray-200');
+            
+            checkFormValidity();
+        }
+
+        // === 核心逻辑修改：严格单选模式 ===
+        function selectTemplate(el, id) {
+            selectedTemplateId = id;
+            
+            // 1. 重置所有卡片状态
+            document.querySelectorAll('.template-card').forEach(card => {
+                // 移除选中边框
+                card.classList.remove('card-selected');
+                
+                // 恢复文字颜色为默认（如果有变化的话，当前代码主要通过透明度控制图标）
+                const label = card.querySelector('span');
+                if(label) label.classList.remove('text-[#0071e3]', 'font-bold');
+                
+                // 隐藏对勾
+                const icon = card.querySelector('.check-icon');
+                if (icon) {
+                    icon.classList.remove('opacity-100');
+                    icon.classList.add('opacity-0');
+                }
+            });
+            
+            // 2. 激活当前点击的卡片
+            el.classList.add('card-selected');
+            
+            // 文字高亮（可选）
+            const label = el.querySelector('span');
+            if(label) label.classList.add('text-[#0071e3]', 'font-bold');
+            
+            // 显示对勾
+            const icon = el.querySelector('.check-icon');
+            if (icon) {
+                icon.classList.remove('opacity-0');
+                icon.classList.add('opacity-100');
+            }
+        }
+
+        function checkFormValidity() {
+            const btn = document.getElementById('generateBtn');
+            if (selectedFile) {
+                btn.disabled = false;
+                btn.classList.remove('opacity-50', 'cursor-not-allowed');
+            } else {
+                btn.disabled = true;
+                btn.classList.add('opacity-50', 'cursor-not-allowed');
+            }
+        }
+
+        // === Generation Simulation (Same as before) ===
+        let progressInterval;
+
+        function startGeneration() {
+            document.getElementById('section-create').classList.add('hidden');
+            document.getElementById('section-processing').classList.remove('hidden');
+            
+            let progress = 0;
+            const bar = document.getElementById('progress-bar');
+            const text = document.getElementById('progress-percent');
+            const stageText = document.getElementById('process-stage-text');
+            const timeText = document.getElementById('time-remaining');
+
+            const stages = [
+                { p: 10, t: "上传文件..." },
+                { p: 30, t: "AI 正在编写脚本..." },
+                { p: 60, t: "正在合成语音..." },
+                { p: 85, t: "渲染视频画面..." },
+                { p: 95, t: "最后处理中..." }
+            ];
+
+            progressInterval = setInterval(() => {
+                progress += Math.random() * 2;
+                if (progress >= 100) progress = 100;
+
+                bar.style.width = `${progress}%`;
+                text.innerText = `${Math.floor(progress)}%`;
+
+                const currentStage = stages.find(s => progress < s.p + 15);
+                if (currentStage) stageText.innerText = currentStage.t;
+
+                if (progress >= 100) {
+                    clearInterval(progressInterval);
+                    setTimeout(() => {
+                        document.getElementById('section-processing').classList.add('hidden');
+                        document.getElementById('section-result').classList.remove('hidden');
+                    }, 800);
+                }
+            }, 100); 
+        }
+
+        function cancelGeneration() {
+            clearInterval(progressInterval);
+            document.getElementById('section-processing').classList.add('hidden');
+            document.getElementById('section-create').classList.remove('hidden');
+        }
+
+        function resetHome() {
+            document.getElementById('section-result').classList.add('hidden');
+            document.getElementById('section-create').classList.remove('hidden');
+            clearFile({ stopPropagation: () => {} });
+        }
+
+        function openScriptModal() {
+            document.getElementById('script-modal').classList.remove('hidden');
+        }
+
+        function closeScriptModal() {
+            document.getElementById('script-modal').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
