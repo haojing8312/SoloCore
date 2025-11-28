@@ -19,11 +19,11 @@ class WebConfigs:
     # 华为云OBS配置
     @property
     def ACCESS_KEY_ID(self):
-        return self._settings.obs_access_key_id
+        return self._settings.obs_access_key
 
     @property
     def SECRET_ACCESS_KEY(self):
-        return self._settings.obs_secret_access_key
+        return self._settings.obs_secret_key
 
     @property
     def ENDPOINT(self):
@@ -31,11 +31,11 @@ class WebConfigs:
 
     @property
     def BUCKET_NAME(self):
-        return self._settings.obs_bucket_name
+        return self._settings.obs_bucket
 
     @property
     def DOMAIN_NAME(self):
-        return self._settings.obs_domain_name
+        return getattr(self._settings, 'obs_domain_name', None)
 
     # MinIO配置
     @property

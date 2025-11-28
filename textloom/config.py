@@ -203,6 +203,7 @@ class Settings(BaseSettings):
     obs_secret_key: Optional[str] = None
     obs_endpoint: Optional[str] = None
     obs_bucket: Optional[str] = None
+    obs_domain_name: Optional[str] = None
 
     # MinIO（不提供默认值，网络参数提供默认）
     minio_endpoint: Optional[str] = None
@@ -212,6 +213,9 @@ class Settings(BaseSettings):
     minio_bucket: Optional[str] = None
     minio_bucket_name: Optional[str] = None
     minio_domain_name: Optional[str] = None
+    minio_connect_timeout: float = 5.0
+    minio_read_timeout: float = 20.0
+    minio_max_pool_size: int = 10
 
     # 工作空间配置
     workspace_dir: str = "./workspace"
