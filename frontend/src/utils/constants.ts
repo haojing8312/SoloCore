@@ -43,31 +43,67 @@ export const UI_CONFIG = {
 } as const;
 
 /**
- * Subtitle Templates
+ * Subtitle Templates - 基于PyCaps模板系统
  */
 export const SUBTITLE_TEMPLATES: SubtitleTemplateInfo[] = [
   {
     id: 'hype',
     name: 'Hype',
-    description: '动感活力,适合年轻受众',
-    previewImage: '/assets/templates/hype-preview.png'
+    description: '动感活力,适合年轻受众'
   },
   {
     id: 'minimalist',
     name: 'Minimalist',
-    description: '极简风格,专业简洁',
-    previewImage: '/assets/templates/minimalist-preview.png'
+    description: '极简风格,专业简洁'
   },
   {
     id: 'explosive',
     name: 'Explosive',
-    description: '爆炸效果,吸引注意力',
-    previewImage: '/assets/templates/explosive-preview.png'
+    description: '爆炸效果,吸引注意力'
   },
   {
     id: 'vibrant',
     name: 'Vibrant',
-    description: '多彩活泼,色彩丰富',
-    previewImage: '/assets/templates/vibrant-preview.png'
+    description: '多彩活泼,色彩丰富'
+  },
+  {
+    id: 'classic',
+    name: 'Classic',
+    description: '经典优雅,永不过时'
+  },
+  {
+    id: 'fast',
+    name: 'Fast',
+    description: '快速节奏,紧凑高效'
+  },
+  {
+    id: 'line-focus',
+    name: 'Line Focus',
+    description: '行聚焦,突出重点'
+  },
+  {
+    id: 'model',
+    name: 'Model',
+    description: '科技风格,未来感十足'
+  },
+  {
+    id: 'neo-minimal',
+    name: 'Neo Minimal',
+    description: '新极简,现代简约'
+  },
+  {
+    id: 'retro-gaming',
+    name: 'Retro Gaming',
+    description: '复古游戏,怀旧像素风'
+  },
+  {
+    id: 'word-focus',
+    name: 'Word Focus',
+    description: '词聚焦,逐词强调'
+  },
+  {
+    id: 'default',
+    name: 'Default',
+    description: '默认样式,通用场景'
   }
 ] as const;

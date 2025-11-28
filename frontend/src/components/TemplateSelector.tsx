@@ -2,8 +2,10 @@
  * Subtitle template selector component
  */
 
+import { useState } from 'react';
 import { useTaskStore } from '@/stores/taskStore';
 import { SUBTITLE_TEMPLATES } from '@/utils/constants';
+import { TemplatePreview } from './TemplatePreview';
 import type { SubtitleTemplate } from '@/types';
 
 interface TemplateSelectorProps {
@@ -13,6 +15,7 @@ interface TemplateSelectorProps {
 export function TemplateSelector({ onTemplateSelect }: TemplateSelectorProps) {
   const selectedTemplate = useTaskStore((state) => state.selectedTemplate);
   const setSelectedTemplate = useTaskStore((state) => state.setSelectedTemplate);
+  const [hoveredTemplate, setHoveredTemplate] = useState<SubtitleTemplate | null>(null);
 
   const handleSelect = (templateId: SubtitleTemplate) => {
     setSelectedTemplate(templateId);
@@ -37,10 +40,12 @@ export function TemplateSelector({ onTemplateSelect }: TemplateSelectorProps) {
               }
             `}
             onClick={() => handleSelect(template.id)}
+            onMouseEnter={() => setHoveredTemplate(template.id)}
+            onMouseLeave={() => setHoveredTemplate(null)}
           >
             {/* Selected Indicator */}
             {selectedTemplate === template.id && (
-              <div className="absolute top-2 right-2 w-6 h-6 bg-primary rounded-full flex items-center justify-center">
+              <div className="absolute top-2 right-2 w-6 h-6 bg-primary rounded-full flex items-center justify-center z-10">
                 <svg
                   className="w-4 h-4 text-primary-foreground"
                   fill="none"
@@ -57,19 +62,11 @@ export function TemplateSelector({ onTemplateSelect }: TemplateSelectorProps) {
               </div>
             )}
 
-            {/* Template Preview Image */}
-            <div className="aspect-video bg-secondary rounded-md mb-3 flex items-center justify-center overflow-hidden">
-              <img
-                src={template.previewImage}
-                alt={template.name}
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  // Fallback to placeholder if image fails to load
-                  e.currentTarget.style.display = 'none';
-                  e.currentTarget.parentElement!.innerHTML = `
-                    <div class="text-muted-foreground text-sm">预览图</div>
-                  `;
-                }}
+            {/* Template Preview - CSS Dynamic Rendering */}
+            <div className="aspect-video rounded-md mb-3 overflow-hidden">
+              <TemplatePreview
+                templateId={template.id}
+                animated={hoveredTemplate === template.id}
               />
             </div>
 

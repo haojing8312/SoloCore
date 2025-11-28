@@ -24,9 +24,21 @@ export enum TaskPhase {
 }
 
 /**
- * 字幕模板类型
+ * 字幕模板类型 - 基于PyCaps模板系统
  */
-export type SubtitleTemplate = 'hype' | 'minimalist' | 'explosive' | 'vibrant';
+export type SubtitleTemplate =
+  | 'hype'
+  | 'minimalist'
+  | 'explosive'
+  | 'vibrant'
+  | 'classic'
+  | 'fast'
+  | 'line-focus'
+  | 'model'
+  | 'neo-minimal'
+  | 'retro-gaming'
+  | 'word-focus'
+  | 'default';
 
 /**
  * 脚本风格类型
@@ -64,7 +76,6 @@ export interface SubtitleTemplateInfo {
   id: SubtitleTemplate;
   name: string;
   description: string;
-  previewImage: string;
   example?: string;
 }
 

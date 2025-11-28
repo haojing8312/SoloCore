@@ -319,7 +319,7 @@ async def create_video_task(
 
 @router.post("/attachments/upload")
 async def upload_attachments(
-    current_user=Depends(require_api_key),
+    current_user=Depends(optional_api_key),
     files: List[UploadFile] = File(...)
 ) -> Dict[str, Any]:
     """附件上传接口：将文件上传到对象存储并返回URL（单次≤50个）。"""
