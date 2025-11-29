@@ -15,27 +15,27 @@ export default defineConfig({
     host: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:48095',
+        target: 'http://127.0.0.1:48095',  // 使用 IPv4 地址避免 Windows IPv6 连接问题
         changeOrigin: true,
       },
       '/tasks': {
-        target: 'http://localhost:48095',
+        target: 'http://127.0.0.1:48095',
         changeOrigin: true,
       },
       '/auth': {
-        target: 'http://localhost:48095',
+        target: 'http://127.0.0.1:48095',
         changeOrigin: true,
       },
       '/personas': {
-        target: 'http://localhost:48095',
+        target: 'http://127.0.0.1:48095',
         changeOrigin: true,
       },
       '/internal': {
-        target: 'http://localhost:48095',
+        target: 'http://127.0.0.1:48095',
         changeOrigin: true,
       },
       '/dynamic-subtitles': {
-        target: 'http://localhost:48095',
+        target: 'http://127.0.0.1:48095',
         changeOrigin: true,
       },
     },
