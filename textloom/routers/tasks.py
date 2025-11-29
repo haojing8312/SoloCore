@@ -54,7 +54,7 @@ logger = logging.getLogger(__name__)
 
 @router.post("/create-video-task", response_model=Task)
 async def create_video_task(
-    current_user=Depends(require_api_key),
+    current_user=Depends(optional_api_key),  # 改为可选认证，方便开发环境使用
     media_urls: List[str] = Form(...),
     title: str = Form(...),
     description: Optional[str] = Form(None),

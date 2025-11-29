@@ -46,27 +46,71 @@ export type SubtitleTemplate =
 export type ScriptStyle = 'default';
 
 /**
- * 视频任务实体
+ * 视频任务实体 - 匹配后端 Task 模型
  */
 export interface VideoTask {
+  // 基础字段
   id: string;
-  filename: string;
+  title: string;
+  description?: string;
+  task_type?: string;
+
+  // 文件相关
+  source_file?: string;
+  file_path?: string;
+  workspace_dir?: string;
+
+  // 任务状态
+  creator_id?: string;
   status: TaskStatus;
   progress: number;
-  currentPhase?: TaskPhase;
-  subtitleTemplate: SubtitleTemplate;
-  scriptStyle: ScriptStyle;
-  videoUrl?: string;
-  scriptContent?: string;
-  thumbnailUrl?: string;
-  errorMessage?: string;
-  errorCode?: string;
-  createdAt: string;
-  updatedAt: string;
-  completedAt?: string;
-  duration?: number;
-  fileSize?: number;
-  estimatedTime?: number;
+  current_stage?: string;
+
+  // 时间戳
+  created_at: string;
+  updated_at?: string;
+  started_at?: string;
+  completed_at?: string;
+
+  // 错误信息
+  error_message?: string;
+  error_traceback?: string;
+
+  // Celery 相关
+  celery_task_id?: string;
+  worker_name?: string;
+  retry_count?: number;
+  max_retries?: number;
+
+  // 脚本相关
+  script_style_type?: string;
+  script_title?: string;
+  script_description?: string;
+  script_narration?: string;
+  script_tags?: string[];
+  script_estimated_duration?: number;
+  script_word_count?: number;
+  script_material_count?: number;
+
+  // 素材统计
+  markdown_count?: number;
+  image_count?: number;
+  video_count?: number;
+
+  // 视频输出
+  video_url?: string;
+  thumbnail_url?: string;
+  video_duration?: number;
+  video_file_size?: number;
+  video_quality?: string;
+  course_media_id?: number;
+
+  // 多视频任务
+  is_multi_video_task?: boolean;
+  multi_video_count?: number;
+  multi_video_urls?: string[];
+  sub_videos_completed?: number;
+  multi_video_results?: Record<string, unknown>[];
 }
 
 /**

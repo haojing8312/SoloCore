@@ -44,8 +44,9 @@ export function useFileUpload() {
         const uploadedFile = response.items[0];
 
         if (uploadedFile.success) {
-          // 使用 object_key 作为 fileId
-          setUploadedFileId(uploadedFile.object_key);
+          // 后端创建任务接口需要 URL，不是 object_key
+          // 保存完整的 URL 作为 fileId
+          setUploadedFileId(uploadedFile.url);
           showToast({
             type: 'success',
             message: `文件上传成功: ${uploadedFile.filename}`,
@@ -59,7 +60,7 @@ export function useFileUpload() {
             });
           }
 
-          return uploadedFile.object_key;
+          return uploadedFile.url;
         } else {
           throw new Error(`文件上传失败: ${uploadedFile.filename}`);
         }

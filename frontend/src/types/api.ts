@@ -73,9 +73,9 @@ export type CreateTaskResponse = ApiResponse<{
 }>;
 
 /**
- * 任务状态查询响应
+ * 任务状态查询响应 - 后端直接返回 Task 对象，不包装
  */
-export type GetTaskStatusResponse = ApiResponse<VideoTask>;
+export type GetTaskStatusResponse = VideoTask;
 
 /**
  * 任务列表查询请求
@@ -89,14 +89,9 @@ export interface GetTasksRequest {
 }
 
 /**
- * 任务列表查询响应
+ * 任务列表查询响应 - 后端直接返回 Task 数组，不包装
  */
-export type GetTasksResponse = ApiResponse<{
-  tasks: VideoTask[];
-  total: number;
-  page: number;
-  pageSize: number;
-}>;
+export type GetTasksResponse = VideoTask[];
 
 /**
  * 任务取消响应
@@ -109,30 +104,23 @@ export type CancelTaskResponse = ApiResponse;
 export type DeleteTaskResponse = ApiResponse;
 
 /**
- * 统计数据
+ * 统计数据 - 匹配后端 TaskStats 模型
  */
 export interface StatsData {
-  totalTasks: number;
-  todayTasks: number;
-  successRate: number;
-  avgDuration: number;
-  statusDistribution: {
-    pending: number;
-    processing: number;
-    completed: number;
-    failed: number;
-    cancelled: number;
-  };
-  recentTrend: Array<{
-    date: string;
-    count: number;
-  }>;
+  total_tasks: number;
+  pending_tasks: number;
+  processing_tasks: number;
+  completed_tasks: number;
+  failed_tasks: number;
+  total_media_items: number;
+  downloaded_media_items: number;
+  average_processing_time: number;
 }
 
 /**
- * 统计数据查询响应
+ * 统计数据查询响应 - 后端直接返回 TaskStats 对象
  */
-export type GetStatsResponse = ApiResponse<StatsData>;
+export type GetStatsResponse = StatsData;
 
 /**
  * Type guard for error response

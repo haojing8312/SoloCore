@@ -63,12 +63,12 @@ api.interceptors.response.use(
 
       // Handle specific status codes
       if (status === 401) {
-        // Unauthorized - clear auth and redirect to login
-        localStorage.removeItem('auth_token');
-        // Only redirect if not already on login page
-        if (!window.location.pathname.includes('/login')) {
-          window.location.href = '/login';
-        }
+        // Unauthorized - 认证失败
+        // TextLoom 是内部工具，如需认证请配置 API Key
+        console.error('API 认证失败: 请检查后端配置或设置 API Key');
+
+        // 不自动跳转到登录页，因为前端没有登录功能
+        // 如果需要 API Key，应该在请求拦截器中统一添加
       }
 
       return Promise.reject(enhancedError);
