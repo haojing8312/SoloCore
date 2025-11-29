@@ -24,20 +24,41 @@ export interface ErrorResponse {
 }
 
 /**
- * 文件上传响应
+ * 单个上传文件信息
  */
-export type UploadFileResponse = ApiResponse<{
-  fileId: string;
+export interface UploadedFileItem {
   filename: string;
-  size: number;
   url: string;
-}>;
+  object_key: string;
+  media_type: 'markdown' | 'image' | 'video' | 'unknown';
+  size: number;
+  success: boolean;
+}
+
+/**
+ * 文件上传统计信息
+ */
+export interface UploadStats {
+  markdown_count: number;
+  image_count: number;
+  video_count: number;
+  total_size: number;
+}
+
+/**
+ * 文件上传响应（批量上传）
+ */
+export interface UploadFileResponse {
+  items: UploadedFileItem[];
+  stats: UploadStats;
+  warnings: string[];
+}
 
 /**
  * 任务创建请求
  */
 export interface CreateTaskRequest {
-  fileId: string;
+  fileId: string;  // 前端使用，对应后端的 object_key
   subtitleTemplate: SubtitleTemplate;
   scriptStyle?: ScriptStyle;
   multiVideoCount?: number;

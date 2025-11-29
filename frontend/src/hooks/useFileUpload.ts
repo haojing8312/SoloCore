@@ -38,15 +38,33 @@ export function useFileUpload() {
         setUploadProgress(progress);
       });
 
-      if (response.success && response.data) {
-        setUploadedFileId(response.data.fileId);
-        showToast({
-          type: 'success',
-          message: '文件上传成功',
-        });
-        return response.data.fileId;
+      // 后端返回批量上传格式: { items: [...], stats: {...}, warnings: [...] }
+      // 检查第一个上传项是否成功
+      if (response.items && response.items.length > 0) {
+        const uploadedFile = response.items[0];
+
+        if (uploadedFile.success) {
+          // 使用 object_key 作为 fileId
+          setUploadedFileId(uploadedFile.object_key);
+          showToast({
+            type: 'success',
+            message: `文件上传成功: ${uploadedFile.filename}`,
+          });
+
+          // 如果有警告，显示警告信息
+          if (response.warnings && response.warnings.length > 0) {
+            showToast({
+              type: 'warning',
+              message: response.warnings.join('; '),
+            });
+          }
+
+          return uploadedFile.object_key;
+        } else {
+          throw new Error(`文件上传失败: ${uploadedFile.filename}`);
+        }
       } else {
-        throw new Error(response.message || '文件上传失败');
+        throw new Error('文件上传失败: 服务器未返回上传结果');
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '文件上传失败,请重试';
